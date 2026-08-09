@@ -1,0 +1,8 @@
+name = "vatflow-api"
+main = "src/worker.js"
+compatibility_date = "2024-11-18"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vatflow-db"
+database_id = "0df9149f-6fd7-4ca0-8973-c98f1888ac9a"

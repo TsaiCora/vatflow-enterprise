@@ -1,0 +1,93 @@
+{
+    "amazon": {
+        "order_id": ["Order ID", "Order-ID", "Amazon Order ID", "order_id"],
+        "order_date": ["Purchase Date", "Order Date", "date"],
+        "country": ["Shipping Country", "Country", "Recipient Country"],
+        "vat_number": ["Buyer VAT Number", "VAT Number", "VAT-Registration-Number"],
+        "amount": ["Item Total", "Total", "Gross Amount", "amount"],
+        "net_amount": ["Net Amount", "Subtotal", "net_amount"],
+        "vat_amount": ["Tax", "VAT", "vat_amount"],
+        "customer_email": ["Buyer Email", "Email"],
+        "customer_name": ["Buyer Name", "Recipient Name"],
+        "product_sku": ["SKU", "ASIN"],
+        "quantity": ["Quantity", "Units"]
+    },
+    "ebay": {
+        "order_id": ["Transaction ID", "Order ID", "Order Number"],
+        "order_date": ["Transaction Date", "Order Date", "Sales Record Date"],
+        "country": ["Country", "Buyer Country", "Ship To Country"],
+        "vat_number": ["Buyer VAT ID", "VAT ID", "Invoice Number"],
+        "amount": ["Gross Amount", "Total Amount", "Order Total"],
+        "net_amount": ["Net Amount", "Item Price"],
+        "vat_amount": ["Tax", "VAT Amount"],
+        "customer_email": ["Buyer Email", "Email"],
+        "customer_name": ["Buyer Name", "Username"],
+        "product_sku": ["Item ID", "Product ID", "SKU"],
+        "quantity": ["Quantity", "Qty"]
+    },
+    "shopify": {
+        "order_id": ["Order #", "Order Number", "id", "order_id"],
+        "order_date": ["Created At", "Order Date", "created_at"],
+        "country": ["Country", "Shipping Country", "billing_country"],
+        "vat_number": ["VAT Number", "Tax ID", "vat_id"],
+        "amount": ["Total Price", "Total", "amount"],
+        "net_amount": ["Subtotal", "net_amount"],
+        "vat_amount": ["Total Tax", "Tax", "vat_amount"],
+        "customer_email": ["Email", "Customer Email", "email"],
+        "customer_name": ["Name", "Customer Name", "billing_name"],
+        "product_sku": ["SKU", "Product SKU", "variant_sku"],
+        "quantity": ["Quantity", "qty"]
+    },
+    "wish": {
+        "order_id": ["Merchant Order ID", "Order ID"],
+        "order_date": ["Order Date", "Purchase Date"],
+        "country": ["Shipping Country", "Country"],
+        "vat_number": ["Tax ID", "VAT"],
+        "amount": ["Total Price", "Order Amount"],
+        "net_amount": ["Product Price", "Item Price"],
+        "vat_amount": ["Tax", "VAT"],
+        "customer_email": ["Email", "Buyer Email"],
+        "customer_name": ["Buyer Name"],
+        "product_sku": ["SKU", "Product ID"],
+        "quantity": ["Quantity", "Qty"]
+    },
+    "aliexpress": {
+        "order_id": ["Order ID", "order_id"],
+        "order_date": ["Order Date", "Created At"],
+        "country": ["Country", "Shipping Country"],
+        "vat_number": ["VAT Number", "Tax ID"],
+        "amount": ["Total Amount", "Order Amount"],
+        "net_amount": ["Product Amount", "Item Price"],
+        "vat_amount": ["VAT", "Tax"],
+        "customer_email": ["Email", "Buyer Email"],
+        "customer_name": ["Buyer Name", "Recipient"],
+        "product_sku": ["SKU", "Product SKU"],
+        "quantity": ["Quantity", "Qty"]
+    },
+    "etsy": {
+        "order_id": ["Order #", "Order ID"],
+        "order_date": ["Order Date", "Date Created"],
+        "country": ["Country", "Shipping Country"],
+        "vat_number": ["VAT", "Tax ID"],
+        "amount": ["Item Total", "Total Price"],
+        "net_amount": ["Subtotal", "Item Price"],
+        "vat_amount": ["Sales Tax", "VAT Amount"],
+        "customer_email": ["Email", "Buyer Email"],
+        "customer_name": ["Buyer Name", "Name"],
+        "product_sku": ["SKU", "Product ID"],
+        "quantity": ["Quantity", "Qty"]
+    },
+    "default": {
+        "order_id": ["Order ID", "Order #", "id", "order_number"],
+        "order_date": ["Date", "Created At", "Order Date"],
+        "country": ["Country", "Country Code"],
+        "vat_number": ["VAT Number", "Tax ID", "vat_id"],
+        "amount": ["Amount", "Total", "Price"],
+        "net_amount": ["Net", "Subtotal"],
+        "vat_amount": ["Tax", "VAT"],
+        "customer_email": ["Email", "Customer Email"],
+        "customer_name": ["Name", "Customer Name"],
+        "product_sku": ["SKU", "Product Code"],
+        "quantity": ["Quantity", "Qty"]
+    }
+}

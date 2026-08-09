@@ -1,0 +1,104 @@
+{
+    "admin": {
+        "tenantId": "admin",
+        "name": "系统管理员",
+        "email": "admin@vatflow.com",
+        "company": "VATFlow 科技",
+        "country": "CN",
+        "role": "admin",
+        "status": "active",
+        "settings": {
+            "autoProcess": true,
+            "emailNotifications": true,
+            "defaultRate": 20,
+            "currency": "EUR"
+        },
+        "taxConfig": {
+            "ossEnabled": true,
+            "mtdEnabled": false,
+            "viesValidation": true,
+            "defaultPeriod": "monthly"
+        }
+    },
+    "client_a": {
+        "tenantId": "client_a",
+        "name": "张伟",
+        "email": "zhangwei@example.com",
+        "company": "深圳跨境电商有限公司",
+        "vatNumber": "IE1234567A",
+        "country": "IE",
+        "role": "user",
+        "status": "active",
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "settings": {
+            "autoProcess": true,
+            "emailNotifications": true,
+            "defaultRate": 23,
+            "currency": "EUR"
+        },
+        "taxConfig": {
+            "ossEnabled": true,
+            "mtdEnabled": false,
+            "viesValidation": true,
+            "defaultPeriod": "monthly",
+            "countries": ["FR", "DE", "IT", "ES"],
+            "excludedCountries": [],
+            "customRates": {
+                "FR": 0.20,
+                "DE": 0.19
+            }
+        }
+    },
+    "client_b": {
+        "tenantId": "client_b",
+        "name": "李娜",
+        "email": "lina@example.com",
+        "company": "杭州贸易有限公司",
+        "vatNumber": "GB123456789",
+        "country": "GB",
+        "role": "user",
+        "status": "active",
+        "createdAt": "2024-01-05T00:00:00.000Z",
+        "settings": {
+            "autoProcess": true,
+            "emailNotifications": true,
+            "defaultRate": 20,
+            "currency": "GBP"
+        },
+        "taxConfig": {
+            "ossEnabled": false,
+            "mtdEnabled": true,
+            "viesValidation": true,
+            "defaultPeriod": "quarterly",
+            "countries": ["GB", "FR", "DE"],
+            "excludedCountries": [],
+            "customRates": {}
+        }
+    },
+    "client_c": {
+        "tenantId": "client_c",
+        "name": "王芳",
+        "email": "wangfang@example.com",
+        "company": "广州科技有限公司",
+        "vatNumber": "FR14652014051",
+        "country": "FR",
+        "role": "user",
+        "status": "inactive",
+        "createdAt": "2024-01-10T00:00:00.000Z",
+        "settings": {
+            "autoProcess": false,
+            "emailNotifications": true,
+            "defaultRate": 20,
+            "currency": "EUR"
+        },
+        "taxConfig": {
+            "ossEnabled": true,
+            "mtdEnabled": false,
+            "viesValidation": true,
+            "defaultPeriod": "monthly",
+            "countries": ["FR", "DE", "BE", "NL"],
+            "excludedCountries": [],
+            "customRates": {}
+        }
+    }
+}
