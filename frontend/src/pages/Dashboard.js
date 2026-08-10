@@ -24,6 +24,8 @@ import {
 import { dashboardAPI } from '../services/api';
 
 function Dashboard() {
+    console.log('📊 Dashboard 组件已渲染');
+    
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState({
         totalTenants: 0,
@@ -36,12 +38,12 @@ function Dashboard() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        console.log('🚀 Dashboard 组件已挂载');
+        console.log('🚀 Dashboard 组件已挂载 - 版本 2026-08-10');
         loadData();
     }, []);
 
     const loadData = async () => {
-        console.log('🔄 开始加载数据...');
+        console.log('🔄 开始加载 Dashboard 数据...');
         setLoading(true);
         setError(null);
         
@@ -49,13 +51,11 @@ function Dashboard() {
             console.log('📡 调用 dashboardAPI.getDashboard()...');
             const result = await dashboardAPI.getDashboard();
             console.log('📊 API 返回原始数据:', result);
-            console.log('📊 result.success:', result?.success);
-            console.log('📊 result.data:', result?.data);
-            console.log('📊 result.data.totalTenants:', result?.data?.totalTenants);
             
             if (result && result.success) {
                 const rawData = result.data || {};
                 console.log('📦 rawData:', rawData);
+                console.log('📦 rawData.totalTenants:', rawData.totalTenants);
                 
                 const mappedData = {
                     totalTenants: rawData.totalTenants || 0,
@@ -69,54 +69,23 @@ function Dashboard() {
                 console.log('✅ 映射后的数据:', mappedData);
                 setData(mappedData);
             } else {
-                console.error('❌ API返回失败:', result);
+                console.error('❌ API 返回失败:', result);
                 setError(result?.error || '加载失败');
             }
         } catch (err) {
-            console.error('❌ 捕获异常:', err);
-            console.error('❌ 异常类型:', typeof err);
-            console.error('❌ 异常信息:', err.message || err);
-            setError(typeof err === 'string' ? err : (err.message || '网络错误，请检查后端'));
+            console.error('❌ 加载异常:', err);
+            setError('网络错误，请检查后端服务');
         } finally {
             setLoading(false);
-            console.log('🏁 加载完成, loading 状态:', false);
+            console.log('🏁 加载完成');
         }
     };
 
-    console.log('🔄 当前渲染状态:', { loading, data, error });
-
-    if (loading) {
-        return (
-            <Box sx={{ p: 3 }}>
-                <LinearProgress />
-                <Typography sx={{ mt: 2, textAlign: 'center' }}>加载中...</Typography>
-            </Box>
-        );
-    }
-
-    if (error) {
-        return (
-            <Box sx={{ p: 3 }}>
-                <Alert severity="error" sx={{ mt: 2 }}>
-                    {error}
-                </Alert>
-                <Button
-                    variant="contained"
-                    startIcon={<RefreshIcon />}
-                    onClick={loadData}
-                    sx={{ mt: 2 }}
-                >
-                    重试
-                </Button>
-            </Box>
-        );
-    }
-
-    // 统计数据卡片配置
+    // 统计卡片配置
     const stats = [
         {
             title: '租户总数',
-            value: data?.totalTenants || 0,
+            value: data.totalTenants,
             icon: <PeopleIcon sx={{ fontSize: 32, color: '#1976d2' }} />,
             color: '#e3f2fd',
             bgColor: '#1976d2',
@@ -124,7 +93,7 @@ function Dashboard() {
         },
         {
             title: '申报总数',
-            value: data?.totalFilings || 0,
+            value: data.totalFilings,
             icon: <AssessmentIcon sx={{ fontSize: 32, color: '#2e7d32' }} />,
             color: '#e8f5e9',
             bgColor: '#2e7d32',
@@ -132,7 +101,7 @@ function Dashboard() {
         },
         {
             title: '交易总数',
-            value: data?.totalTransactions || 0,
+            value: data.totalTransactions,
             icon: <ReceiptIcon sx={{ fontSize: 32, color: '#ed6c02' }} />,
             color: '#fff3e0',
             bgColor: '#ed6c02',
@@ -148,6 +117,32 @@ function Dashboard() {
         }
     ];
 
+    if (loading) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <LinearProgress />
+                <Typography sx={{ mt: 2, textAlign: 'center' }}>加载数据中...</Typography>
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <Alert severity="error" sx={{ mb: 2 }}>
+                    {error}
+                </Alert>
+                <Button
+                    variant="contained"
+                    startIcon={<RefreshIcon />}
+                    onClick={loadData}
+                >
+                    重试
+                </Button>
+            </Box>
+        );
+    }
+
     return (
         <Box sx={{ p: 3 }}>
             {/* 页面标题 */}
@@ -156,11 +151,16 @@ function Dashboard() {
                     📊 概览看板
                 </Typography>
                 <Chip 
-                    label={`更新于 ${new Date().toLocaleString()}`} 
+                    label={`数据更新时间: ${new Date().toLocaleString()}`} 
                     size="small" 
                     variant="outlined" 
                 />
             </Box>
+
+            {/* 调试信息 - 显示数据状态 */}
+            <Alert severity="info" sx={{ mb: 2 }}>
+                数据状态: 租户 {data.totalTenants} 个, 申报 {data.totalFilings} 个, 交易 {data.totalTransactions} 个
+            </Alert>
 
             {/* 统计卡片 */}
             <Grid container spacing={3}>
@@ -207,7 +207,7 @@ function Dashboard() {
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
                             📋 最近活动
                         </Typography>
-                        {data?.recentActivities && data.recentActivities.length > 0 ? (
+                        {data.recentActivities && data.recentActivities.length > 0 ? (
                             data.recentActivities.map((activity, index) => (
                                 <Box key={index}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
@@ -235,7 +235,7 @@ function Dashboard() {
                         </Typography>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
                             <Typography color="text.secondary">版本</Typography>
-                            <Typography variant="body2">VATFlow v3.0</Typography>
+                            <Typography variant="body2">VATFlow v3.0.1</Typography>
                         </Box>
                         <Divider />
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
@@ -255,7 +255,7 @@ function Dashboard() {
                         <Divider />
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
                             <Typography color="text.secondary">租户总数</Typography>
-                            <Typography variant="body2" fontWeight="bold">{data?.totalTenants || 0}</Typography>
+                            <Typography variant="body2" fontWeight="bold">{data.totalTenants}</Typography>
                         </Box>
                     </Paper>
                 </Grid>
