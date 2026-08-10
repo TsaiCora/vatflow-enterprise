@@ -21,9 +21,10 @@ import {
     CheckCircle as CheckCircleIcon,
     Refresh as RefreshIcon
 } from '@mui/icons-material';
+import { dashboardAPI } from '../services/api';  // ← 导入API
 
 function Dashboard() {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);  // ← 默认为true
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
 
@@ -32,23 +33,34 @@ function Dashboard() {
     }, []);
 
     const loadData = async () => {
+        setLoading(true);  // ← 开始加载
         setError(null);
         try {
-            const response = await fetch('/api/v1/dashboard');
-            const result = await response.json();
+            // ✅ 使用封装好的API
+            const result = await dashboardAPI.getDashboard();
             console.log('📊 Dashboard 数据:', result);
-            if (result.success) {
+            
+            if (result && result.success) {
                 setData(result.data);
             } else {
-                setError(result.error || '加载失败');
+                setError(result?.error || '加载失败');
             }
         } catch (err) {
             console.error('❌ 加载失败:', err);
-            setError('网络错误，请检查后端');
+            setError(typeof err === 'string' ? err : '网络错误，请检查后端');
         } finally {
             setLoading(false);
         }
     };
+
+    if (loading) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <LinearProgress />
+                <Typography sx={{ mt: 2, textAlign: 'center' }}>加载中...</Typography>
+            </Box>
+        );
+    }
 
     if (error) {
         return (
@@ -157,7 +169,6 @@ function Dashboard() {
 
             {/* 详细信息 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
-                {/* 最近活动 */}
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
@@ -181,7 +192,6 @@ function Dashboard() {
                     </Paper>
                 </Grid>
 
-                {/* 系统信息 */}
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
