@@ -32,3 +32,4 @@ function App() {
 }
 
 export default App;"// trigger deploy" 
+"// Build version: 2026-08-10-v2" 
