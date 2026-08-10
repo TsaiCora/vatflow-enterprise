@@ -3,3 +3,5 @@ build/
 .env 
 .wrangler/ 
 package-lock.json 
+"frontend/build/" 
+"frontend/node_modules/" 
