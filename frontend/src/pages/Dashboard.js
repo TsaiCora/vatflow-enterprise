@@ -25,41 +25,65 @@ import { dashboardAPI } from '../services/api';
 
 function Dashboard() {
     const [loading, setLoading] = useState(true);
-    const [data, setData] = useState(null);
+    const [data, setData] = useState({
+        totalTenants: 0,
+        totalFilings: 0,
+        totalTransactions: 0,
+        recentActivities: [],
+        vatTrend: [],
+        countryDistribution: {}
+    });
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        console.log('🚀 Dashboard 组件已挂载');
         loadData();
     }, []);
 
     const loadData = async () => {
+        console.log('🔄 开始加载数据...');
         setLoading(true);
         setError(null);
+        
         try {
+            console.log('📡 调用 dashboardAPI.getDashboard()...');
             const result = await dashboardAPI.getDashboard();
-            console.log('📊 Dashboard 原始数据:', result);
+            console.log('📊 API 返回原始数据:', result);
+            console.log('📊 result.success:', result?.success);
+            console.log('📊 result.data:', result?.data);
+            console.log('📊 result.data.totalTenants:', result?.data?.totalTenants);
             
-            // ✅ 正确解析API返回的数据
             if (result && result.success) {
                 const rawData = result.data || {};
-                setData({
+                console.log('📦 rawData:', rawData);
+                
+                const mappedData = {
                     totalTenants: rawData.totalTenants || 0,
                     totalFilings: rawData.totalFilings || 0,
                     totalTransactions: rawData.totalTransactions || 0,
                     recentActivities: rawData.recentActivities || [],
                     vatTrend: rawData.vatTrend || [],
                     countryDistribution: rawData.countryDistribution || {}
-                });
+                };
+                
+                console.log('✅ 映射后的数据:', mappedData);
+                setData(mappedData);
             } else {
+                console.error('❌ API返回失败:', result);
                 setError(result?.error || '加载失败');
             }
         } catch (err) {
-            console.error('❌ 加载失败:', err);
-            setError(typeof err === 'string' ? err : '网络错误，请检查后端');
+            console.error('❌ 捕获异常:', err);
+            console.error('❌ 异常类型:', typeof err);
+            console.error('❌ 异常信息:', err.message || err);
+            setError(typeof err === 'string' ? err : (err.message || '网络错误，请检查后端'));
         } finally {
             setLoading(false);
+            console.log('🏁 加载完成, loading 状态:', false);
         }
     };
+
+    console.log('🔄 当前渲染状态:', { loading, data, error });
 
     if (loading) {
         return (
@@ -88,7 +112,7 @@ function Dashboard() {
         );
     }
 
-    // 统计数据
+    // 统计数据卡片配置
     const stats = [
         {
             title: '租户总数',
