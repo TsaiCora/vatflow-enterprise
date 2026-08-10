@@ -1,6 +1,6 @@
 // frontend/src/components/Layout/index.js
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';  // ← 添加 Outlet
 import {
     Box,
     Drawer,
@@ -53,7 +53,7 @@ function safeParseJSON(data) {
     }
 }
 
-function Layout({ children }) {
+function Layout() {  // ← 移除 children 参数
     const theme = useTheme();
     const location = useLocation();
     const navigate = useNavigate();
@@ -231,7 +231,7 @@ function Layout({ children }) {
                 </Drawer>
             </Box>
 
-            {/* ===== main 区域：硬编码内容，不依赖 children ===== */}
+            {/* ===== main 区域：使用 Outlet 渲染子路由 ===== */}
             <Box
                 component="main"
                 sx={{
@@ -243,13 +243,7 @@ function Layout({ children }) {
                 }}
             >
                 <Toolbar />
-                <Typography variant="h2" color="error" sx={{ p: 3 }}>
-                    🔴 Layout 强制内容
-                </Typography>
-                <Typography variant="body1" sx={{ p: 3 }}>
-                    如果你看到这段文字，说明 Layout 正常渲染！
-                </Typography>
-                {/* 完全删除 {children}，不依赖路由传递 */}
+                <Outlet />  {/* ← 这里渲染子路由（Dashboard等） */}
             </Box>
         </Box>
     );
