@@ -21,10 +21,10 @@ import {
     CheckCircle as CheckCircleIcon,
     Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { dashboardAPI } from '../services/api';  // ← 导入API
+import { dashboardAPI } from '../services/api';
 
 function Dashboard() {
-    const [loading, setLoading] = useState(true);  // ← 默认为true
+    const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
 
@@ -33,15 +33,23 @@ function Dashboard() {
     }, []);
 
     const loadData = async () => {
-        setLoading(true);  // ← 开始加载
+        setLoading(true);
         setError(null);
         try {
-            // ✅ 使用封装好的API
             const result = await dashboardAPI.getDashboard();
-            console.log('📊 Dashboard 数据:', result);
+            console.log('📊 Dashboard 原始数据:', result);
             
+            // ✅ 正确解析API返回的数据
             if (result && result.success) {
-                setData(result.data);
+                const rawData = result.data || {};
+                setData({
+                    totalTenants: rawData.totalTenants || 0,
+                    totalFilings: rawData.totalFilings || 0,
+                    totalTransactions: rawData.totalTransactions || 0,
+                    recentActivities: rawData.recentActivities || [],
+                    vatTrend: rawData.vatTrend || [],
+                    countryDistribution: rawData.countryDistribution || {}
+                });
             } else {
                 setError(result?.error || '加载失败');
             }
@@ -169,6 +177,7 @@ function Dashboard() {
 
             {/* 详细信息 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
+                {/* 最近活动 */}
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
@@ -178,9 +187,11 @@ function Dashboard() {
                             data.recentActivities.map((activity, index) => (
                                 <Box key={index}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                                        <Typography variant="body2">{activity.type || '活动'}</Typography>
+                                        <Typography variant="body2">
+                                            {activity.type || activity.action || '活动'}
+                                        </Typography>
                                         <Typography variant="caption" color="text.secondary">
-                                            {activity.created_at || ''}
+                                            {activity.created_at || activity.time || ''}
                                         </Typography>
                                     </Box>
                                     {index < data.recentActivities.length - 1 && <Divider />}
@@ -192,6 +203,7 @@ function Dashboard() {
                     </Paper>
                 </Grid>
 
+                {/* 系统信息 */}
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
