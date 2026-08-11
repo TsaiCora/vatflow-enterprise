@@ -1,6 +1,6 @@
 // frontend/src/components/Layout/index.js
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';  // ← 添加 Outlet
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
     Box,
     Drawer,
@@ -34,11 +34,12 @@ import {
 
 const drawerWidth = 280;
 
+// ===== 菜单配置 =====
 const menuItems = [
     { path: '/dashboard', label: '概览看板', icon: <DashboardIcon /> },
     { path: '/tenants', label: '客户管理', icon: <PeopleIcon /> },
     { path: '/upload', label: '文件上传', icon: <UploadIcon /> },
-    { path: '/tax', label: '税务校验', icon: <CalculateIcon /> },
+    { path: '/tax-validation', label: '税务校验', icon: <CalculateIcon /> },  // ← 税务校验
     { path: '/reports', label: '申报报告', icon: <AssessmentIcon /> },
     { path: '/transactions', label: '交易记录', icon: <ReceiptIcon /> },
     { path: '/settings', label: '系统设置', icon: <SettingsIcon /> },
@@ -53,7 +54,7 @@ function safeParseJSON(data) {
     }
 }
 
-function Layout() {  // ← 移除 children 参数
+function Layout() {
     const theme = useTheme();
     const location = useLocation();
     const navigate = useNavigate();
@@ -231,7 +232,7 @@ function Layout() {  // ← 移除 children 参数
                 </Drawer>
             </Box>
 
-            {/* ===== main 区域：使用 Outlet 渲染子路由 ===== */}
+            {/* ===== 主内容区域：使用 Outlet 渲染子路由 ===== */}
             <Box
                 component="main"
                 sx={{
@@ -243,7 +244,7 @@ function Layout() {  // ← 移除 children 参数
                 }}
             >
                 <Toolbar />
-                <Outlet />  {/* ← 这里渲染子路由（Dashboard等） */}
+                <Outlet />
             </Box>
         </Box>
     );
