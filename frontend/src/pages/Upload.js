@@ -1,266 +1,931 @@
 // frontend/src/pages/Upload.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Box,
     Typography,
     Paper,
+    Grid,
+    Card,
+    CardContent,
     Button,
-    List,
-    ListItem,
-    ListItemText,
-    ListItemIcon,
-    IconButton,
-    LinearProgress,
-    Snackbar,
+    Select,
+    MenuItem,
+    FormControl,
+    InputLabel,
+    Chip,
     Alert,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
     CircularProgress,
-    Chip
+    Divider,
+    IconButton,
+    Tooltip,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    TextField,
+    Tab,
+    Tabs,
+    LinearProgress
 } from '@mui/material';
 import {
     CloudUpload as CloudUploadIcon,
+    Assessment as AssessmentIcon,
     Delete as DeleteIcon,
-    InsertDriveFile as InsertDriveFileIcon
+    Refresh as RefreshIcon,
+    Cancel as CancelIcon,
+    Print as PrintIcon,
+    TableChart as ExcelIcon,
+    CheckCircle as CheckCircleIcon,
+    Error as ErrorIcon,
+    People as PeopleIcon,
+    Public as PublicIcon,
+    Timeline as TimelineIcon,
+    Receipt as ReceiptIcon,
+    GetApp as DownloadIcon
 } from '@mui/icons-material';
-import VATProfileSelector from '../components/VATProfileSelector';
+import { fileAPI, tenantAPI, taxAPI } from '../services/api';
+
+// ===== 平台列表（21个）=====
+const PLATFORMS = [
+    { id: 'amazon', name: 'Amazon', icon: '🛒' },
+    { id: 'ebay', name: 'eBay', icon: '📦' },
+    { id: 'aliexpress', name: 'AliExpress', icon: '🌐' },
+    { id: 'allegro', name: 'Allegro', icon: '🛍️' },
+    { id: 'shopify', name: 'Shopify', icon: '🛍️' },
+    { id: 'etsy', name: 'Etsy', icon: '🎨' },
+    { id: 'walmart', name: 'Walmart', icon: '🏪' },
+    { id: 'target', name: 'Target', icon: '🎯' },
+    { id: 'zalando', name: 'Zalando', icon: '👗' },
+    { id: 'lazada', name: 'Lazada', icon: '🛒' },
+    { id: 'shopee', name: 'Shopee', icon: '🏷️' },
+    { id: 'temu', name: 'Temu', icon: '🛍️' },
+    { id: 'shein', name: 'SHEIN', icon: '👚' },
+    { id: 'tiktok', name: 'TikTok Shop', icon: '🎵' },
+    { id: 'depop', name: 'Depop', icon: '👕' },
+    { id: 'mercari', name: 'Mercari', icon: '🛍️' },
+    { id: 'poshmark', name: 'Poshmark', icon: '👗' },
+    { id: 'rakuten', name: 'Rakuten', icon: '🛒' },
+    { id: 'wish', name: 'Wish', icon: '🎁' },
+    { id: 'yahoo', name: 'Yahoo Shopping', icon: '🔍' },
+    { id: 'pva', name: 'PVA', icon: '📋' },
+];
+
+// ===== 国家列表 =====
+const COUNTRIES = [
+    { code: 'GB', name: '英国', flag: '🇬🇧', taxRate: 20 },
+    { code: 'FR', name: '法国', flag: '🇫🇷', taxRate: 20 },
+    { code: 'DE', name: '德国', flag: '🇩🇪', taxRate: 19 },
+    { code: 'IT', name: '意大利', flag: '🇮🇹', taxRate: 22 },
+    { code: 'ES', name: '西班牙', flag: '🇪🇸', taxRate: 21 },
+    { code: 'NL', name: '荷兰', flag: '🇳🇱', taxRate: 21 },
+    { code: 'BE', name: '比利时', flag: '🇧🇪', taxRate: 21 },
+    { code: 'PL', name: '波兰', flag: '🇵🇱', taxRate: 23 },
+    { code: 'SE', name: '瑞典', flag: '🇸🇪', taxRate: 25 },
+    { code: 'DK', name: '丹麦', flag: '🇩🇰', taxRate: 25 },
+    { code: 'FI', name: '芬兰', flag: '🇫🇮', taxRate: 24 },
+    { code: 'IE', name: '爱尔兰', flag: '🇮🇪', taxRate: 23 },
+    { code: 'PT', name: '葡萄牙', flag: '🇵🇹', taxRate: 23 },
+    { code: 'AT', name: '奥地利', flag: '🇦🇹', taxRate: 20 },
+    { code: 'NO', name: '挪威', flag: '🇳🇴', taxRate: 25 },
+    { code: 'CH', name: '瑞士', flag: '🇨🇭', taxRate: 7.7 },
+    { code: 'JP', name: '日本', flag: '🇯🇵', taxRate: 10 },
+    { code: 'SG', name: '新加坡', flag: '🇸🇬', taxRate: 9 },
+    { code: 'AU', name: '澳大利亚', flag: '🇦🇺', taxRate: 10 },
+    { code: 'CA', name: '加拿大', flag: '🇨🇦', taxRate: 5 },
+    { code: 'US', name: '美国', flag: '🇺🇸', taxRate: 0 },
+    { code: 'KR', name: '韩国', flag: '🇰🇷', taxRate: 10 },
+    { code: 'MY', name: '马来西亚', flag: '🇲🇾', taxRate: 8 },
+    { code: 'TH', name: '泰国', flag: '🇹🇭', taxRate: 7 },
+    { code: 'VN', name: '越南', flag: '🇻🇳', taxRate: 10 },
+    { code: 'ID', name: '印度尼西亚', flag: '🇮🇩', taxRate: 11 },
+    { code: 'PH', name: '菲律宾', flag: '🇵🇭', taxRate: 12 },
+    { code: 'IN', name: '印度', flag: '🇮🇳', taxRate: 18 },
+    { code: 'ZA', name: '南非', flag: '🇿🇦', taxRate: 15 },
+    { code: 'TR', name: '土耳其', flag: '🇹🇷', taxRate: 18 },
+    { code: 'AE', name: '阿联酋', flag: '🇦🇪', taxRate: 5 },
+    { code: 'NZ', name: '新西兰', flag: '🇳🇿', taxRate: 15 },
+    { code: 'BR', name: '巴西', flag: '🇧🇷', taxRate: 17 },
+    { code: 'MX', name: '墨西哥', flag: '🇲🇽', taxRate: 16 },
+];
+
+// ===== 年份和季度 =====
+const YEARS = ['2024', '2025', '2026', '2027', '2028'];
+const MONTHS = [
+    { value: '01', label: '1月' },
+    { value: '02', label: '2月' },
+    { value: '03', label: '3月' },
+    { value: '04', label: '4月' },
+    { value: '05', label: '5月' },
+    { value: '06', label: '6月' },
+    { value: '07', label: '7月' },
+    { value: '08', label: '8月' },
+    { value: '09', label: '9月' },
+    { value: '10', label: '10月' },
+    { value: '11', label: '11月' },
+    { value: '12', label: '12月' },
+];
+
+const QUARTERS = [
+    { value: 'Q1', label: 'Q1 (1-3月)', months: ['01', '02', '03'] },
+    { value: 'Q2', label: 'Q2 (4-6月)', months: ['04', '05', '06'] },
+    { value: 'Q3', label: 'Q3 (7-9月)', months: ['07', '08', '09'] },
+    { value: 'Q4', label: 'Q4 (10-12月)', months: ['10', '11', '12'] },
+];
+
+// ===== 核对维度 =====
+const CHECK_DIMENSIONS = [
+    { value: 'monthly', label: '月度核对' },
+    { value: 'quarterly', label: '季度核对' },
+];
 
 function Upload() {
-    const [files, setFiles] = useState([]);
+    const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
-    const [progress, setProgress] = useState(0);
-    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-    const [selectedVATProfile, setSelectedVATProfile] = useState(null);
+    const [tenants, setTenants] = useState([]);
+    const [selectedTenant, setSelectedTenant] = useState('');
+    const [selectedCountry, setSelectedCountry] = useState('');
+    const [selectedPlatform, setSelectedPlatform] = useState('');
+    const [selectedYear, setSelectedYear] = useState('2026');
+    const [selectedMonth, setSelectedMonth] = useState('');
+    const [selectedQuarter, setSelectedQuarter] = useState('');
+    const [selectedDimension, setSelectedDimension] = useState('quarterly');
+    const [uploadedFiles, setUploadedFiles] = useState([]);
+    const [checkResult, setCheckResult] = useState(null);
+    const [openPreview, setOpenPreview] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(false);
+    const [activeTab, setActiveTab] = useState(0);
 
-    const handleFileChange = (event) => {
-        const selectedFiles = Array.from(event.target.files);
-        setFiles(prev => [...prev, ...selectedFiles]);
-    };
+    // ===== 加载租户列表 =====
+    useEffect(() => {
+        loadTenants();
+        loadUploadedFiles();
+    }, []);
 
-    const handleRemoveFile = (index) => {
-        setFiles(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const handleClearAll = () => {
-        setFiles([]);
-        setProgress(0);
-    };
-
-    const handleUpload = async () => {
-        if (files.length === 0) {
-            setSnackbar({ open: true, message: '请选择文件', severity: 'warning' });
-            return;
+    const loadTenants = async () => {
+        try {
+            const result = await tenantAPI.getTenants();
+            console.log('📥 租户列表:', result);
+            if (result && result.success) {
+                setTenants(result.data || []);
+            }
+        } catch (err) {
+            console.error('❌ 加载租户失败:', err);
         }
+    };
 
-        if (!selectedVATProfile) {
-            setSnackbar({ open: true, message: '请先选择VAT档案', severity: 'warning' });
+    const loadUploadedFiles = async () => {
+        setLoading(true);
+        try {
+            const result = await fileAPI.getFiles();
+            if (result && result.success) {
+                setUploadedFiles(result.data || []);
+            }
+        } catch (err) {
+            console.error('❌ 加载文件失败:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ===== 获取租户名称 =====
+    const getTenantName = (id) => {
+        const tenant = tenants.find(t => t.id === id || t.tenant_id === id);
+        return tenant ? tenant.name || tenant.company || id : id;
+    };
+
+    // ===== 获取国家信息 =====
+    const getCountryInfo = (code) => {
+        return COUNTRIES.find(c => c.code === code);
+    };
+
+    // ===== 处理文件上传 =====
+    const handleFileUpload = async (event) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+
+        if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedMonth) {
+            setError('请选择客户、国家、平台、年份和月份');
             return;
         }
 
         setUploading(true);
-        setProgress(0);
-
-        const formData = new FormData();
-        files.forEach(file => formData.append('files', file));
-        formData.append('vatProfileId', selectedVATProfile.id);
+        setError(null);
+        setUploadProgress(0);
 
         try {
-            const response = await fetch('/api/v1/files/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            console.log('📥 上传响应:', result);
-
-            if (result.success) {
-                setSnackbar({
-                    open: true,
-                    message: `${files.length} 个文件上传成功，关联到 ${selectedVATProfile.vat_number}`,
-                    severity: 'success'
-                });
-                setFiles([]);
-                setProgress(100);
-            } else {
-                setSnackbar({
-                    open: true,
-                    message: result.error || '上传失败',
-                    severity: 'error'
-                });
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
             }
-        } catch (error) {
-            console.error('❌ 上传错误:', error);
-            setSnackbar({
-                open: true,
-                message: '网络错误，请检查后端',
-                severity: 'error'
+            formData.append('tenantId', selectedTenant);
+            formData.append('country', selectedCountry);
+            formData.append('platform', selectedPlatform);
+            formData.append('year', selectedYear);
+            formData.append('month', selectedMonth);
+
+            const result = await fileAPI.upload(Array.from(files), (progress) => {
+                setUploadProgress(progress);
             });
+
+            console.log('📥 上传结果:', result);
+            
+            if (result && result.success) {
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 3000);
+                loadUploadedFiles();
+                event.target.value = '';
+            } else {
+                setError(result?.error || '上传失败');
+            }
+        } catch (err) {
+            console.error('❌ 上传失败:', err);
+            setError(typeof err === 'string' ? err : '上传失败，请重试');
         } finally {
             setUploading(false);
+            setUploadProgress(0);
         }
     };
 
-    const handleDrop = (e) => {
-        e.preventDefault();
-        const droppedFiles = Array.from(e.dataTransfer.files);
-        setFiles(prev => [...prev, ...droppedFiles]);
+    // ===== 执行核对 =====
+    const handleCheck = async () => {
+        if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear) {
+            setError('请选择客户、国家、平台和年份');
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        setCheckResult(null);
+
+        try {
+            // 构建查询参数
+            const params = {
+                tenantId: selectedTenant,
+                country: selectedCountry,
+                platform: selectedPlatform,
+                year: selectedYear,
+                dimension: selectedDimension
+            };
+
+            if (selectedDimension === 'monthly' && selectedMonth) {
+                params.month = selectedMonth;
+            }
+
+            if (selectedDimension === 'quarterly' && selectedQuarter) {
+                params.quarter = selectedQuarter;
+            }
+
+            // 调用API获取数据
+            const result = await fileAPI.getFiles(params);
+            console.log('📊 核对结果:', result);
+
+            const countryInfo = getCountryInfo(selectedCountry);
+            const taxRate = countryInfo?.taxRate || 20;
+
+            // 生成核对报告
+            const report = generateCheckReport(result.data || [], {
+                tenantId: selectedTenant,
+                country: selectedCountry,
+                platform: selectedPlatform,
+                year: selectedYear,
+                month: selectedMonth,
+                quarter: selectedQuarter,
+                dimension: selectedDimension,
+                taxRate: taxRate,
+                countryName: countryInfo?.name || selectedCountry
+            });
+
+            setCheckResult(report);
+            setOpenPreview(true);
+
+        } catch (err) {
+            console.error('❌ 核对失败:', err);
+            setError(err.message || '核对失败');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleDragOver = (e) => e.preventDefault();
+    // ===== 生成核对报告 =====
+    const generateCheckReport = (data, params) => {
+        const { dimension, taxRate, countryName, platform, year, month, quarter } = params;
+        
+        let totalNetAmount = 0;
+        let totalVATAmount = 0;
+        let totalGrossAmount = 0;
+        let totalOrders = 0;
+        let breakdown = {};
 
-    const formatFileSize = (bytes) => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        // 按月份分组
+        if (data && data.length) {
+            data.forEach(item => {
+                const netAmount = item.net_amount || item.amount || 0;
+                const vatAmount = item.vat_amount || item.vat || 0;
+                const grossAmount = netAmount + vatAmount;
+                
+                totalNetAmount += netAmount;
+                totalVATAmount += vatAmount;
+                totalGrossAmount += grossAmount;
+                totalOrders += 1;
+
+                // 按月份分组
+                const monthKey = item.month || 'unknown';
+                if (!breakdown[monthKey]) {
+                    breakdown[monthKey] = { net: 0, vat: 0, gross: 0, orders: 0 };
+                }
+                breakdown[monthKey].net += netAmount;
+                breakdown[monthKey].vat += vatAmount;
+                breakdown[monthKey].gross += grossAmount;
+                breakdown[monthKey].orders += 1;
+            });
+        }
+
+        // 计算税务核对
+        const expectedVAT = totalNetAmount * (taxRate / 100);
+        const vatDifference = totalVATAmount - expectedVAT;
+        const vatMatch = Math.abs(vatDifference) < 1;
+
+        return {
+            ...params,
+            countryName,
+            taxRate,
+            summary: {
+                totalNetAmount,
+                totalVATAmount,
+                totalGrossAmount,
+                totalOrders,
+                expectedVAT,
+                vatDifference,
+                vatMatch
+            },
+            breakdown,
+            status: vatMatch ? '✅ 匹配' : '⚠️ 需复核',
+            recommendation: vatMatch 
+                ? '税务数据正常，可以申报' 
+                : `VAT差异 €${vatDifference.toFixed(2)}，建议复核数据`,
+            generatedAt: new Date().toISOString(),
+            recordCount: data?.length || 0
+        };
+    };
+
+    // ===== 导出报告 =====
+    const handleExport = () => {
+        if (!checkResult) return;
+        
+        const report = {
+            ...checkResult,
+            exportedAt: new Date().toISOString()
+        };
+
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const filename = `${checkResult.dimension}_${checkResult.tenantId}_${checkResult.country}_${checkResult.platform}_${checkResult.year}`;
+        a.href = url;
+        a.download = `核对报告_${filename}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // ===== 删除文件 =====
+    const handleDeleteFile = async (fileId) => {
+        if (!confirm('确定要删除这个文件吗？')) return;
+        try {
+            await fileAPI.deleteFile(fileId);
+            loadUploadedFiles();
+        } catch (err) {
+            setError('删除失败');
+        }
+    };
+
+    // ===== 获取显示名称 =====
+    const getPlatformName = (id) => {
+        const platform = PLATFORMS.find(p => p.id === id);
+        return platform ? `${platform.icon} ${platform.name}` : id;
     };
 
     return (
         <Box sx={{ p: 3 }}>
-            <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 3 }}>
-                📤 文件上传
-            </Typography>
-
-            {/* VAT 档案选择 */}
-            <Paper sx={{ p: 2, mb: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        选择VAT档案：
-                    </Typography>
-                    <VATProfileSelector
-                        value={selectedVATProfile?.id}
-                        onChange={(id) => {}}
-                        onProfileChange={setSelectedVATProfile}
-                        label="选择VAT档案"
-                    />
-                    {selectedVATProfile && (
-                        <Chip
-                            label={`当前: ${selectedVATProfile.country} ${selectedVATProfile.vat_number}`}
-                            color="primary"
-                            size="small"
-                        />
-                    )}
-                </Box>
-            </Paper>
-
-            {/* 上传区域 */}
-            <Paper
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                sx={{
-                    p: 4,
-                    mb: 3,
-                    border: '2px dashed #ccc',
-                    borderRadius: 2,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                        borderColor: 'primary.main',
-                        backgroundColor: '#f5f9ff'
-                    }
-                }}
-                onClick={() => document.getElementById('fileInput').click()}
-            >
-                <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-                <Typography variant="h6" gutterBottom>
-                    拖拽文件到此处，或点击选择文件
+            {/* 页面标题 */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                    📂 客户数据管理
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                    支持格式: CSV, XLSX, XLS, JSON, TXT, ZIP
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                    单个文件最大 100MB，单次最多 20 个文件
-                </Typography>
-                <input
-                    id="fileInput"
-                    type="file"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.json,.txt,.zip"
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
+                <Chip 
+                    label={`已上传 ${uploadedFiles.length} 个文件`} 
+                    color="primary" 
+                    variant="outlined"
                 />
-            </Paper>
+            </Box>
 
-            {files.length > 0 && (
-                <Paper sx={{ p: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">
-                            已选择 {files.length} 个文件
-                        </Typography>
-                        <Box>
-                            <Button
-                                variant="outlined"
-                                color="error"
-                                size="small"
-                                onClick={handleClearAll}
-                                disabled={uploading}
-                                sx={{ mr: 1 }}
-                            >
-                                清空全部
-                            </Button>
-                            <Button
-                                variant="contained"
-                                size="small"
-                                onClick={handleUpload}
-                                disabled={uploading || files.length === 0 || !selectedVATProfile}
-                                startIcon={uploading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
-                            >
-                                {uploading ? '上传中...' : '上传并处理'}
-                            </Button>
-                        </Box>
-                    </Box>
-
-                    <List>
-                        {files.map((file, index) => (
-                            <ListItem key={index} divider>
-                                <ListItemIcon>
-                                    <InsertDriveFileIcon />
-                                </ListItemIcon>
-                                <ListItemText
-                                    primary={file.name}
-                                    secondary={formatFileSize(file.size)}
-                                />
-                                <IconButton
-                                    onClick={() => handleRemoveFile(index)}
-                                    disabled={uploading}
-                                >
-                                    <DeleteIcon />
-                                </IconButton>
-                            </ListItem>
-                        ))}
-                    </List>
-
-                    {uploading && (
-                        <Box sx={{ mt: 2 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography variant="body2" color="text.secondary">
-                                    上传进度
-                                </Typography>
-                                <Typography variant="body2" fontWeight={600}>
-                                    {progress}%
-                                </Typography>
-                            </Box>
-                            <LinearProgress
-                                variant="determinate"
-                                value={progress}
-                                sx={{ height: 8, borderRadius: 4 }}
-                            />
-                        </Box>
-                    )}
-                </Paper>
+            {error && (
+                <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+                    {error}
+                </Alert>
             )}
 
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={() => setSnackbar({ ...snackbar, open: false })}
-                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-            >
-                <Alert
-                    severity={snackbar.severity}
-                    onClose={() => setSnackbar({ ...snackbar, open: false })}
-                >
-                    {snackbar.message}
+            {success && (
+                <Alert severity="success" sx={{ mb: 3 }}>
+                    ✅ 文件上传成功！
                 </Alert>
-            </Snackbar>
+            )}
+
+            <Grid container spacing={3}>
+                {/* ===== 左侧：上传和核对区域 ===== */}
+                <Grid item xs={12} md={8}>
+                    <Paper sx={{ p: 3 }}>
+                        <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+                            <Tab label="📤 上传数据" icon={<CloudUploadIcon />} />
+                            <Tab label="📊 核对数据" icon={<AssessmentIcon />} />
+                        </Tabs>
+
+                        {/* ===== Tab 1: 上传数据 ===== */}
+                        {activeTab === 0 && (
+                            <Box>
+                                <Typography variant="subtitle1" gutterBottom>上传月度销售数据</Typography>
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                                    支持 CSV, Excel, PDF 格式
+                                </Typography>
+
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>客户</InputLabel>
+                                            <Select
+                                                value={selectedTenant}
+                                                onChange={(e) => setSelectedTenant(e.target.value)}
+                                                label="客户"
+                                            >
+                                                <MenuItem value="">请选择客户</MenuItem>
+                                                {tenants.map((t) => (
+                                                    <MenuItem key={t.id || t.tenant_id} value={t.id || t.tenant_id}>
+                                                        {t.name || t.company || t.email}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>国家</InputLabel>
+                                            <Select
+                                                value={selectedCountry}
+                                                onChange={(e) => setSelectedCountry(e.target.value)}
+                                                label="国家"
+                                            >
+                                                <MenuItem value="">请选择国家</MenuItem>
+                                                {COUNTRIES.map((c) => (
+                                                    <MenuItem key={c.code} value={c.code}>
+                                                        {c.flag} {c.name} ({c.taxRate}%)
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>平台</InputLabel>
+                                            <Select
+                                                value={selectedPlatform}
+                                                onChange={(e) => setSelectedPlatform(e.target.value)}
+                                                label="平台"
+                                            >
+                                                <MenuItem value="">请选择平台</MenuItem>
+                                                {PLATFORMS.map((p) => (
+                                                    <MenuItem key={p.id} value={p.id}>
+                                                        {p.icon} {p.name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>年份</InputLabel>
+                                            <Select
+                                                value={selectedYear}
+                                                onChange={(e) => setSelectedYear(e.target.value)}
+                                                label="年份"
+                                            >
+                                                {YEARS.map((y) => (
+                                                    <MenuItem key={y} value={y}>{y}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>月份</InputLabel>
+                                            <Select
+                                                value={selectedMonth}
+                                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                                label="月份"
+                                            >
+                                                <MenuItem value="">请选择月份</MenuItem>
+                                                {MONTHS.map((m) => (
+                                                    <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12}>
+                                        <Button
+                                            variant="contained"
+                                            component="label"
+                                            fullWidth
+                                            startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                                            disabled={uploading || !selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedMonth}
+                                            sx={{ py: 2 }}
+                                        >
+                                            {uploading ? `上传中 ${uploadProgress}%` : '选择文件上传'}
+                                            <input
+                                                type="file"
+                                                hidden
+                                                multiple
+                                                onChange={handleFileUpload}
+                                                accept=".csv,.xlsx,.xls,.pdf"
+                                            />
+                                        </Button>
+                                        {uploading && (
+                                            <Box sx={{ width: '100%', mt: 1 }}>
+                                                <LinearProgress variant="determinate" value={uploadProgress} />
+                                            </Box>
+                                        )}
+                                    </Grid>
+                                </Grid>
+                            </Box>
+                        )}
+
+                        {/* ===== Tab 2: 核对数据 ===== */}
+                        {activeTab === 1 && (
+                            <Box>
+                                <Typography variant="subtitle1" gutterBottom>核对数据</Typography>
+
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>客户</InputLabel>
+                                            <Select
+                                                value={selectedTenant}
+                                                onChange={(e) => setSelectedTenant(e.target.value)}
+                                                label="客户"
+                                            >
+                                                <MenuItem value="">请选择客户</MenuItem>
+                                                {tenants.map((t) => (
+                                                    <MenuItem key={t.id || t.tenant_id} value={t.id || t.tenant_id}>
+                                                        {t.name || t.company || t.email}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>国家</InputLabel>
+                                            <Select
+                                                value={selectedCountry}
+                                                onChange={(e) => setSelectedCountry(e.target.value)}
+                                                label="国家"
+                                            >
+                                                <MenuItem value="">请选择国家</MenuItem>
+                                                {COUNTRIES.map((c) => (
+                                                    <MenuItem key={c.code} value={c.code}>
+                                                        {c.flag} {c.name} ({c.taxRate}%)
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>平台</InputLabel>
+                                            <Select
+                                                value={selectedPlatform}
+                                                onChange={(e) => setSelectedPlatform(e.target.value)}
+                                                label="平台"
+                                            >
+                                                <MenuItem value="">请选择平台</MenuItem>
+                                                {PLATFORMS.map((p) => (
+                                                    <MenuItem key={p.id} value={p.id}>
+                                                        {p.icon} {p.name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>年份</InputLabel>
+                                            <Select
+                                                value={selectedYear}
+                                                onChange={(e) => setSelectedYear(e.target.value)}
+                                                label="年份"
+                                            >
+                                                {YEARS.map((y) => (
+                                                    <MenuItem key={y} value={y}>{y}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>核对维度</InputLabel>
+                                            <Select
+                                                value={selectedDimension}
+                                                onChange={(e) => setSelectedDimension(e.target.value)}
+                                                label="核对维度"
+                                            >
+                                                {CHECK_DIMENSIONS.map((d) => (
+                                                    <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+
+                                    {selectedDimension === 'monthly' && (
+                                        <Grid item xs={12} sm={4}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel>月份</InputLabel>
+                                                <Select
+                                                    value={selectedMonth}
+                                                    onChange={(e) => setSelectedMonth(e.target.value)}
+                                                    label="月份"
+                                                >
+                                                    <MenuItem value="">请选择月份</MenuItem>
+                                                    {MONTHS.map((m) => (
+                                                        <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+                                                    ))}
+                                                </Select>
+                                            </FormControl>
+                                        </Grid>
+                                    )}
+
+                                    {selectedDimension === 'quarterly' && (
+                                        <Grid item xs={12} sm={4}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel>季度</InputLabel>
+                                                <Select
+                                                    value={selectedQuarter}
+                                                    onChange={(e) => setSelectedQuarter(e.target.value)}
+                                                    label="季度"
+                                                >
+                                                    <MenuItem value="">请选择季度</MenuItem>
+                                                    {QUARTERS.map((q) => (
+                                                        <MenuItem key={q.value} value={q.value}>{q.label}</MenuItem>
+                                                    ))}
+                                                </Select>
+                                            </FormControl>
+                                        </Grid>
+                                    )}
+
+                                    <Grid item xs={12}>
+                                        <Button
+                                            variant="contained"
+                                            color="secondary"
+                                            startIcon={loading ? <CircularProgress size={20} /> : <AssessmentIcon />}
+                                            onClick={handleCheck}
+                                            disabled={loading || !selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear}
+                                            fullWidth
+                                            sx={{ py: 1.5 }}
+                                        >
+                                            {loading ? '核对中...' : '执行核对'}
+                                        </Button>
+                                    </Grid>
+                                </Grid>
+                            </Box>
+                        )}
+                    </Paper>
+                </Grid>
+
+                {/* ===== 右侧：已上传文件列表 ===== */}
+                <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 3, height: '100%' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                            <Typography variant="h6">📋 已上传文件</Typography>
+                            <IconButton size="small" onClick={loadUploadedFiles}>
+                                <RefreshIcon />
+                            </IconButton>
+                        </Box>
+
+                        {loading ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                                <CircularProgress />
+                            </Box>
+                        ) : uploadedFiles.length === 0 ? (
+                            <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                                暂无上传文件
+                            </Typography>
+                        ) : (
+                            <TableContainer>
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>客户/平台</TableCell>
+                                            <TableCell align="right">操作</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {uploadedFiles.slice(0, 10).map((file) => (
+                                            <TableRow key={file.id}>
+                                                <TableCell>
+                                                    <Typography variant="caption" display="block">
+                                                        {getTenantName(file.tenant_id)}
+                                                    </Typography>
+                                                    <Chip 
+                                                        label={getPlatformName(file.platform)} 
+                                                        size="small" 
+                                                        variant="outlined"
+                                                        sx={{ fontSize: 10 }}
+                                                    />
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Tooltip title="删除">
+                                                        <IconButton size="small" onClick={() => handleDeleteFile(file.id)}>
+                                                            <DeleteIcon fontSize="small" color="error" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {uploadedFiles.length > 10 && (
+                                            <TableRow>
+                                                <TableCell colSpan={2} align="center">
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        还有 {uploadedFiles.length - 10} 个文件
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+                    </Paper>
+                </Grid>
+            </Grid>
+
+            {/* ===== 核对结果弹窗 ===== */}
+            <Dialog open={openPreview} onClose={() => setOpenPreview(false)} maxWidth="md" fullWidth>
+                <DialogTitle>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6">
+                            📊 核对报告
+                        </Typography>
+                        <Box>
+                            <Tooltip title="导出报告">
+                                <IconButton onClick={handleExport}>
+                                    <DownloadIcon />
+                                </IconButton>
+                            </Tooltip>
+                            <IconButton onClick={() => setOpenPreview(false)}>
+                                <CancelIcon />
+                            </IconButton>
+                        </Box>
+                    </Box>
+                </DialogTitle>
+                <DialogContent>
+                    {checkResult && (
+                        <Box sx={{ pt: 1 }}>
+                            {/* 基本信息 */}
+                            <Paper sx={{ p: 2, bgcolor: '#f5f5f5', mb: 2 }}>
+                                <Grid container spacing={2}>
+                                    <Grid item xs={6}>
+                                        <Typography variant="caption" color="text.secondary">客户</Typography>
+                                        <Typography variant="body2">{getTenantName(checkResult.tenantId)}</Typography>
+                                    </Grid>
+                                    <Grid item xs={6}>
+                                        <Typography variant="caption" color="text.secondary">国家</Typography>
+                                        <Typography variant="body2">
+                                            {checkResult.countryName} ({checkResult.taxRate}%)
+                                        </Typography>
+                                    </Grid>
+                                    <Grid item xs={6}>
+                                        <Typography variant="caption" color="text.secondary">平台</Typography>
+                                        <Typography variant="body2">{getPlatformName(checkResult.platform)}</Typography>
+                                    </Grid>
+                                    <Grid item xs={6}>
+                                        <Typography variant="caption" color="text.secondary">期间</Typography>
+                                        <Typography variant="body2">
+                                            {checkResult.year} {checkResult.dimension === 'monthly' ? `- ${checkResult.month}月` : checkResult.quarter}
+                                        </Typography>
+                                    </Grid>
+                                </Grid>
+                            </Paper>
+
+                            {/* 汇总数据 */}
+                            <Grid container spacing={2}>
+                                <Grid item xs={4}>
+                                    <Card sx={{ bgcolor: '#e3f2fd' }}>
+                                        <CardContent sx={{ textAlign: 'center' }}>
+                                            <Typography variant="caption" color="text.secondary">净销售额</Typography>
+                                            <Typography variant="h6">€{checkResult.summary.totalNetAmount.toFixed(2)}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={4}>
+                                    <Card sx={{ bgcolor: '#e8f5e9' }}>
+                                        <CardContent sx={{ textAlign: 'center' }}>
+                                            <Typography variant="caption" color="text.secondary">VAT</Typography>
+                                            <Typography variant="h6">€{checkResult.summary.totalVATAmount.toFixed(2)}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={4}>
+                                    <Card sx={{ bgcolor: '#fff3e0' }}>
+                                        <CardContent sx={{ textAlign: 'center' }}>
+                                            <Typography variant="caption" color="text.secondary">订单数</Typography>
+                                            <Typography variant="h6">{checkResult.summary.totalOrders}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            </Grid>
+
+                            {/* 税务核对 */}
+                            <Paper sx={{ p: 2, mt: 2 }}>
+                                <Typography variant="subtitle2" gutterBottom>税务核对</Typography>
+                                <Grid container spacing={2}>
+                                    <Grid item xs={6}>
+                                        <Typography variant="caption" color="text.secondary">应缴VAT ({checkResult.taxRate}%)</Typography>
+                                        <Typography>€{checkResult.summary.expectedVAT.toFixed(2)}</Typography>
+                                    </Grid>
+                                    <Grid item xs={6}>
+                                        <Typography variant="caption" color="text.secondary">实际VAT</Typography>
+                                        <Typography>€{checkResult.summary.totalVATAmount.toFixed(2)}</Typography>
+                                    </Grid>
+                                </Grid>
+                                <Divider sx={{ my: 1 }} />
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography variant="caption" color="text.secondary">差异</Typography>
+                                    <Typography color={checkResult.summary.vatMatch ? 'success.main' : 'warning.main'}>
+                                        €{checkResult.summary.vatDifference.toFixed(2)}
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                                    <Typography variant="caption" color="text.secondary">状态</Typography>
+                                    <Chip 
+                                        label={checkResult.status} 
+                                        color={checkResult.summary.vatMatch ? 'success' : 'warning'}
+                                        size="small"
+                                    />
+                                </Box>
+                                <Box sx={{ mt: 1 }}>
+                                    <Typography variant="caption" color="text.secondary">建议</Typography>
+                                    <Typography variant="body2">{checkResult.recommendation}</Typography>
+                                </Box>
+                            </Paper>
+
+                            {/* 月度明细 */}
+                            {Object.keys(checkResult.breakdown).length > 0 && (
+                                <>
+                                    <Typography variant="subtitle2" sx={{ mt: 2 }} gutterBottom>月度明细</Typography>
+                                    <TableContainer>
+                                        <Table size="small">
+                                            <TableHead>
+                                                <TableRow>
+                                                    <TableCell>月份</TableCell>
+                                                    <TableCell align="right">净销售额</TableCell>
+                                                    <TableCell align="right">VAT</TableCell>
+                                                    <TableCell align="right">总金额</TableCell>
+                                                    <TableCell align="right">订单数</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {Object.entries(checkResult.breakdown).map(([month, data]) => (
+                                                    <TableRow key={month}>
+                                                        <TableCell>{month}月</TableCell>
+                                                        <TableCell align="right">€{data.net.toFixed(2)}</TableCell>
+                                                        <TableCell align="right">€{data.vat.toFixed(2)}</TableCell>
+                                                        <TableCell align="right">€{data.gross.toFixed(2)}</TableCell>
+                                                        <TableCell align="right">{data.orders}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                </>
+                            )}
+
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+                                生成时间: {new Date(checkResult.generatedAt).toLocaleString()}
+                            </Typography>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setOpenPreview(false)}>关闭</Button>
+                    <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExport}>
+                        导出报告
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }
