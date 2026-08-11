@@ -31,7 +31,8 @@ import {
     TextField,
     Tab,
     Tabs,
-    LinearProgress
+    LinearProgress,
+    Snackbar
 } from '@mui/material';
 import {
     CloudUpload as CloudUploadIcon,
@@ -47,9 +48,10 @@ import {
     Public as PublicIcon,
     Timeline as TimelineIcon,
     Receipt as ReceiptIcon,
-    GetApp as DownloadIcon
+    GetApp as DownloadIcon,
+    Close as CloseIcon
 } from '@mui/icons-material';
-import { fileAPI, tenantAPI, taxAPI } from '../services/api';
+import { fileAPI, tenantAPI, transactionAPI, taxAPI, reportAPI } from '../services/api';
 
 // ===== 平台列表（21个）=====
 const PLATFORMS = [
@@ -76,7 +78,7 @@ const PLATFORMS = [
     { id: 'pva', name: 'PVA', icon: '📋' },
 ];
 
-// ===== 国家列表 =====
+// ===== 国家列表（43个）=====
 const COUNTRIES = [
     { code: 'GB', name: '英国', flag: '🇬🇧', taxRate: 20 },
     { code: 'FR', name: '法国', flag: '🇫🇷', taxRate: 20 },
@@ -94,24 +96,33 @@ const COUNTRIES = [
     { code: 'AT', name: '奥地利', flag: '🇦🇹', taxRate: 20 },
     { code: 'NO', name: '挪威', flag: '🇳🇴', taxRate: 25 },
     { code: 'CH', name: '瑞士', flag: '🇨🇭', taxRate: 7.7 },
+    { code: 'RU', name: '俄罗斯', flag: '🇷🇺', taxRate: 20 },
     { code: 'JP', name: '日本', flag: '🇯🇵', taxRate: 10 },
-    { code: 'SG', name: '新加坡', flag: '🇸🇬', taxRate: 9 },
-    { code: 'AU', name: '澳大利亚', flag: '🇦🇺', taxRate: 10 },
-    { code: 'CA', name: '加拿大', flag: '🇨🇦', taxRate: 5 },
-    { code: 'US', name: '美国', flag: '🇺🇸', taxRate: 0 },
+    { code: 'CN', name: '中国', flag: '🇨🇳', taxRate: 13 },
     { code: 'KR', name: '韩国', flag: '🇰🇷', taxRate: 10 },
+    { code: 'SG', name: '新加坡', flag: '🇸🇬', taxRate: 9 },
     { code: 'MY', name: '马来西亚', flag: '🇲🇾', taxRate: 8 },
     { code: 'TH', name: '泰国', flag: '🇹🇭', taxRate: 7 },
     { code: 'VN', name: '越南', flag: '🇻🇳', taxRate: 10 },
     { code: 'ID', name: '印度尼西亚', flag: '🇮🇩', taxRate: 11 },
     { code: 'PH', name: '菲律宾', flag: '🇵🇭', taxRate: 12 },
     { code: 'IN', name: '印度', flag: '🇮🇳', taxRate: 18 },
-    { code: 'ZA', name: '南非', flag: '🇿🇦', taxRate: 15 },
-    { code: 'TR', name: '土耳其', flag: '🇹🇷', taxRate: 18 },
-    { code: 'AE', name: '阿联酋', flag: '🇦🇪', taxRate: 5 },
-    { code: 'NZ', name: '新西兰', flag: '🇳🇿', taxRate: 15 },
-    { code: 'BR', name: '巴西', flag: '🇧🇷', taxRate: 17 },
+    { code: 'HK', name: '香港', flag: '🇭🇰', taxRate: 0 },
+    { code: 'TW', name: '台湾', flag: '🇹🇼', taxRate: 5 },
+    { code: 'US', name: '美国', flag: '🇺🇸', taxRate: 0 },
+    { code: 'CA', name: '加拿大', flag: '🇨🇦', taxRate: 5 },
     { code: 'MX', name: '墨西哥', flag: '🇲🇽', taxRate: 16 },
+    { code: 'BR', name: '巴西', flag: '🇧🇷', taxRate: 17 },
+    { code: 'AR', name: '阿根廷', flag: '🇦🇷', taxRate: 21 },
+    { code: 'AU', name: '澳大利亚', flag: '🇦🇺', taxRate: 10 },
+    { code: 'NZ', name: '新西兰', flag: '🇳🇿', taxRate: 15 },
+    { code: 'ZA', name: '南非', flag: '🇿🇦', taxRate: 15 },
+    { code: 'NG', name: '尼日利亚', flag: '🇳🇬', taxRate: 7.5 },
+    { code: 'EG', name: '埃及', flag: '🇪🇬', taxRate: 14 },
+    { code: 'AE', name: '阿联酋', flag: '🇦🇪', taxRate: 5 },
+    { code: 'SA', name: '沙特阿拉伯', flag: '🇸🇦', taxRate: 15 },
+    { code: 'IL', name: '以色列', flag: '🇮🇱', taxRate: 17 },
+    { code: 'TR', name: '土耳其', flag: '🇹🇷', taxRate: 18 },
 ];
 
 // ===== 年份和季度 =====
@@ -138,12 +149,6 @@ const QUARTERS = [
     { value: 'Q4', label: 'Q4 (10-12月)', months: ['10', '11', '12'] },
 ];
 
-// ===== 核对维度 =====
-const CHECK_DIMENSIONS = [
-    { value: 'monthly', label: '月度核对' },
-    { value: 'quarterly', label: '季度核对' },
-];
-
 function Upload() {
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -154,14 +159,15 @@ function Upload() {
     const [selectedYear, setSelectedYear] = useState('2026');
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedQuarter, setSelectedQuarter] = useState('');
-    const [selectedDimension, setSelectedDimension] = useState('quarterly');
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [checkResult, setCheckResult] = useState(null);
     const [openPreview, setOpenPreview] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [activeTab, setActiveTab] = useState(0);
+    const [autoProcessResult, setAutoProcessResult] = useState(null);
 
     // ===== 加载租户列表 =====
     useEffect(() => {
@@ -206,6 +212,12 @@ function Upload() {
         return COUNTRIES.find(c => c.code === code);
     };
 
+    // ===== 获取平台名称 =====
+    const getPlatformName = (id) => {
+        const platform = PLATFORMS.find(p => p.id === id);
+        return platform ? `${platform.icon} ${platform.name}` : id;
+    };
+
     // ===== 处理文件上传 =====
     const handleFileUpload = async (event) => {
         const files = event.target.files;
@@ -213,6 +225,7 @@ function Upload() {
 
         if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedMonth) {
             setError('请选择客户、国家、平台、年份和月份');
+            setSnackbar({ open: true, message: '请完善上传信息', severity: 'warning' });
             return;
         }
 
@@ -231,33 +244,78 @@ function Upload() {
             formData.append('year', selectedYear);
             formData.append('month', selectedMonth);
 
-            const result = await fileAPI.upload(Array.from(files), (progress) => {
-                setUploadProgress(progress);
+            // 使用原生 fetch 上传
+            const token = localStorage.getItem('token');
+            const response = await fetch('https://api.vatapex.com/api/v1/files/upload', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
             });
 
+            const result = await response.json();
             console.log('📥 上传结果:', result);
             
             if (result && result.success) {
                 setSuccess(true);
-                setTimeout(() => setSuccess(false), 3000);
+                setSnackbar({
+                    open: true,
+                    message: `✅ 上传成功！已处理 ${result.data?.processed || 0} 条记录`,
+                    severity: 'success'
+                });
                 loadUploadedFiles();
                 event.target.value = '';
+                
+                // 自动处理：保存交易记录
+                if (result.data && result.data.transactions) {
+                    // 保存交易记录
+                    await saveTransactions(result.data.transactions);
+                }
             } else {
                 setError(result?.error || '上传失败');
+                setSnackbar({ open: true, message: result?.error || '上传失败', severity: 'error' });
             }
         } catch (err) {
             console.error('❌ 上传失败:', err);
-            setError(typeof err === 'string' ? err : '上传失败，请重试');
+            setError('上传失败，请重试');
+            setSnackbar({ open: true, message: '上传失败，请重试', severity: 'error' });
         } finally {
             setUploading(false);
             setUploadProgress(0);
         }
     };
 
-    // ===== 执行核对 =====
-    const handleCheck = async () => {
-        if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear) {
-            setError('请选择客户、国家、平台和年份');
+    // ===== 保存交易记录 =====
+    const saveTransactions = async (transactions) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('https://api.vatapex.com/api/v1/transactions/batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(transactions)
+            });
+            const result = await response.json();
+            console.log('📥 保存交易记录结果:', result);
+            if (result && result.success) {
+                setSnackbar({
+                    open: true,
+                    message: `✅ 已保存 ${result.count} 条交易记录`,
+                    severity: 'success'
+                });
+            }
+        } catch (err) {
+            console.error('❌ 保存交易记录失败:', err);
+        }
+    };
+
+    // ===== 执行季度核对 =====
+    const handleQuarterCheck = async () => {
+        if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedQuarter) {
+            setError('请选择客户、国家、平台、年份和季度');
             return;
         }
 
@@ -266,131 +324,96 @@ function Upload() {
         setCheckResult(null);
 
         try {
-            // 构建查询参数
-            const params = {
-                tenantId: selectedTenant,
-                country: selectedCountry,
-                platform: selectedPlatform,
-                year: selectedYear,
-                dimension: selectedDimension
-            };
+            const quarterMonths = QUARTERS.find(q => q.value === selectedQuarter)?.months || [];
+            
+            // 获取该季度所有月的数据
+            const token = localStorage.getItem('token');
+            const responses = await Promise.all(
+                quarterMonths.map(async (month) => {
+                    const url = `https://api.vatapex.com/api/v1/files?tenantId=${selectedTenant}&country=${selectedCountry}&platform=${selectedPlatform}&year=${selectedYear}&month=${month}`;
+                    const response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await response.json();
+                    return { month, data: result };
+                })
+            );
 
-            if (selectedDimension === 'monthly' && selectedMonth) {
-                params.month = selectedMonth;
-            }
+            // 汇总数据
+            const allData = responses.map(r => r.data?.data || []);
+            const summary = generateQuarterSummary(allData);
 
-            if (selectedDimension === 'quarterly' && selectedQuarter) {
-                params.quarter = selectedQuarter;
-            }
-
-            // 调用API获取数据
-            const result = await fileAPI.getFiles(params);
-            console.log('📊 核对结果:', result);
-
-            const countryInfo = getCountryInfo(selectedCountry);
-            const taxRate = countryInfo?.taxRate || 20;
-
-            // 生成核对报告
-            const report = generateCheckReport(result.data || [], {
-                tenantId: selectedTenant,
-                country: selectedCountry,
-                platform: selectedPlatform,
-                year: selectedYear,
-                month: selectedMonth,
-                quarter: selectedQuarter,
-                dimension: selectedDimension,
-                taxRate: taxRate,
-                countryName: countryInfo?.name || selectedCountry
-            });
-
-            setCheckResult(report);
+            setCheckResult(summary);
             setOpenPreview(true);
 
         } catch (err) {
-            console.error('❌ 核对失败:', err);
-            setError(err.message || '核对失败');
+            console.error('❌ 季度核对失败:', err);
+            setError(err.message || '季度核对失败');
         } finally {
             setLoading(false);
         }
     };
 
-    // ===== 生成核对报告 =====
-    const generateCheckReport = (data, params) => {
-        const { dimension, taxRate, countryName, platform, year, month, quarter } = params;
-        
-        let totalNetAmount = 0;
-        let totalVATAmount = 0;
-        let totalGrossAmount = 0;
-        let totalOrders = 0;
-        let breakdown = {};
+    // ===== 生成季度汇总 =====
+    const generateQuarterSummary = (data) => {
+        let totalNet = 0, totalVAT = 0, totalGross = 0, totalOrders = 0;
+        const monthsData = {};
+        const countryInfo = getCountryInfo(selectedCountry);
+        const taxRate = countryInfo?.taxRate || 20;
 
-        // 按月份分组
-        if (data && data.length) {
-            data.forEach(item => {
-                const netAmount = item.net_amount || item.amount || 0;
-                const vatAmount = item.vat_amount || item.vat || 0;
-                const grossAmount = netAmount + vatAmount;
-                
-                totalNetAmount += netAmount;
-                totalVATAmount += vatAmount;
-                totalGrossAmount += grossAmount;
-                totalOrders += 1;
+        data.forEach((monthData, index) => {
+            const month = (index + 1).toString().padStart(2, '0');
+            let monthNet = 0, monthVAT = 0, monthGross = 0, monthOrders = 0;
 
-                // 按月份分组
-                const monthKey = item.month || 'unknown';
-                if (!breakdown[monthKey]) {
-                    breakdown[monthKey] = { net: 0, vat: 0, gross: 0, orders: 0 };
-                }
-                breakdown[monthKey].net += netAmount;
-                breakdown[monthKey].vat += vatAmount;
-                breakdown[monthKey].gross += grossAmount;
-                breakdown[monthKey].orders += 1;
-            });
-        }
+            if (monthData && monthData.length) {
+                monthData.forEach(item => {
+                    const net = item.net_amount || item.amount || 0;
+                    const vat = item.vat_amount || item.vat || 0;
+                    monthNet += net;
+                    monthVAT += vat;
+                    monthGross += net + vat;
+                    monthOrders += 1;
+                });
+            }
 
-        // 计算税务核对
-        const expectedVAT = totalNetAmount * (taxRate / 100);
-        const vatDifference = totalVATAmount - expectedVAT;
+            monthsData[month] = { net: monthNet, vat: monthVAT, gross: monthGross, orders: monthOrders };
+            totalNet += monthNet;
+            totalVAT += monthVAT;
+            totalGross += monthGross;
+            totalOrders += monthOrders;
+        });
+
+        const expectedVAT = totalNet * (taxRate / 100);
+        const vatDifference = totalVAT - expectedVAT;
         const vatMatch = Math.abs(vatDifference) < 1;
 
         return {
-            ...params,
-            countryName,
+            tenantId: selectedTenant,
+            tenantName: getTenantName(selectedTenant),
+            country: selectedCountry,
+            countryName: countryInfo?.name || selectedCountry,
             taxRate,
-            summary: {
-                totalNetAmount,
-                totalVATAmount,
-                totalGrossAmount,
-                totalOrders,
-                expectedVAT,
-                vatDifference,
-                vatMatch
-            },
-            breakdown,
+            platform: selectedPlatform,
+            platformName: getPlatformName(selectedPlatform),
+            year: selectedYear,
+            quarter: selectedQuarter,
+            summary: { totalNet, totalVAT, totalGross, totalOrders, expectedVAT, vatDifference, vatMatch },
+            monthsData,
             status: vatMatch ? '✅ 匹配' : '⚠️ 需复核',
-            recommendation: vatMatch 
-                ? '税务数据正常，可以申报' 
-                : `VAT差异 €${vatDifference.toFixed(2)}，建议复核数据`,
-            generatedAt: new Date().toISOString(),
-            recordCount: data?.length || 0
+            recommendation: vatMatch ? '税务数据正常，可以申报' : `VAT差异 €${vatDifference.toFixed(2)}，建议复核数据`,
+            recordCount: data.reduce((sum, d) => sum + (d?.length || 0), 0),
+            generatedAt: new Date().toISOString()
         };
     };
 
     // ===== 导出报告 =====
-    const handleExport = () => {
+    const handleExportReport = () => {
         if (!checkResult) return;
-        
-        const report = {
-            ...checkResult,
-            exportedAt: new Date().toISOString()
-        };
-
-        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(checkResult, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const filename = `${checkResult.dimension}_${checkResult.tenantId}_${checkResult.country}_${checkResult.platform}_${checkResult.year}`;
         a.href = url;
-        a.download = `核对报告_${filename}.json`;
+        a.download = `季度核对报告_${selectedPlatform}_${selectedYear}${selectedQuarter}.json`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -406,12 +429,6 @@ function Upload() {
         }
     };
 
-    // ===== 获取显示名称 =====
-    const getPlatformName = (id) => {
-        const platform = PLATFORMS.find(p => p.id === id);
-        return platform ? `${platform.icon} ${platform.name}` : id;
-    };
-
     return (
         <Box sx={{ p: 3 }}>
             {/* 页面标题 */}
@@ -419,24 +436,11 @@ function Upload() {
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     📂 客户数据管理
                 </Typography>
-                <Chip 
-                    label={`已上传 ${uploadedFiles.length} 个文件`} 
-                    color="primary" 
-                    variant="outlined"
-                />
+                <Chip label={`已上传 ${uploadedFiles.length} 个文件`} color="primary" variant="outlined" />
             </Box>
 
-            {error && (
-                <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-                    {error}
-                </Alert>
-            )}
-
-            {success && (
-                <Alert severity="success" sx={{ mb: 3 }}>
-                    ✅ 文件上传成功！
-                </Alert>
-            )}
+            {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
+            {success && <Alert severity="success" sx={{ mb: 3 }}>✅ 文件上传成功！</Alert>}
 
             <Grid container spacing={3}>
                 {/* ===== 左侧：上传和核对区域 ===== */}
@@ -444,7 +448,7 @@ function Upload() {
                     <Paper sx={{ p: 3 }}>
                         <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
                             <Tab label="📤 上传数据" icon={<CloudUploadIcon />} />
-                            <Tab label="📊 核对数据" icon={<AssessmentIcon />} />
+                            <Tab label="📊 季度核对" icon={<AssessmentIcon />} />
                         </Tabs>
 
                         {/* ===== Tab 1: 上传数据 ===== */}
@@ -546,13 +550,7 @@ function Upload() {
                                             sx={{ py: 2 }}
                                         >
                                             {uploading ? `上传中 ${uploadProgress}%` : '选择文件上传'}
-                                            <input
-                                                type="file"
-                                                hidden
-                                                multiple
-                                                onChange={handleFileUpload}
-                                                accept=".csv,.xlsx,.xls,.pdf"
-                                            />
+                                            <input type="file" hidden multiple onChange={handleFileUpload} accept=".csv,.xlsx,.xls,.pdf" />
                                         </Button>
                                         {uploading && (
                                             <Box sx={{ width: '100%', mt: 1 }}>
@@ -564,10 +562,10 @@ function Upload() {
                             </Box>
                         )}
 
-                        {/* ===== Tab 2: 核对数据 ===== */}
+                        {/* ===== Tab 2: 季度核对 ===== */}
                         {activeTab === 1 && (
                             <Box>
-                                <Typography variant="subtitle1" gutterBottom>核对数据</Typography>
+                                <Typography variant="subtitle1" gutterBottom>季度核对</Typography>
 
                                 <Grid container spacing={2}>
                                     <Grid item xs={12} sm={6}>
@@ -637,66 +635,30 @@ function Upload() {
                                     </Grid>
                                     <Grid item xs={12} sm={4}>
                                         <FormControl fullWidth size="small">
-                                            <InputLabel>核对维度</InputLabel>
+                                            <InputLabel>季度</InputLabel>
                                             <Select
-                                                value={selectedDimension}
-                                                onChange={(e) => setSelectedDimension(e.target.value)}
-                                                label="核对维度"
+                                                value={selectedQuarter}
+                                                onChange={(e) => setSelectedQuarter(e.target.value)}
+                                                label="季度"
                                             >
-                                                {CHECK_DIMENSIONS.map((d) => (
-                                                    <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>
+                                                <MenuItem value="">请选择季度</MenuItem>
+                                                {QUARTERS.map((q) => (
+                                                    <MenuItem key={q.value} value={q.value}>{q.label}</MenuItem>
                                                 ))}
                                             </Select>
                                         </FormControl>
                                     </Grid>
-
-                                    {selectedDimension === 'monthly' && (
-                                        <Grid item xs={12} sm={4}>
-                                            <FormControl fullWidth size="small">
-                                                <InputLabel>月份</InputLabel>
-                                                <Select
-                                                    value={selectedMonth}
-                                                    onChange={(e) => setSelectedMonth(e.target.value)}
-                                                    label="月份"
-                                                >
-                                                    <MenuItem value="">请选择月份</MenuItem>
-                                                    {MONTHS.map((m) => (
-                                                        <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
-                                                    ))}
-                                                </Select>
-                                            </FormControl>
-                                        </Grid>
-                                    )}
-
-                                    {selectedDimension === 'quarterly' && (
-                                        <Grid item xs={12} sm={4}>
-                                            <FormControl fullWidth size="small">
-                                                <InputLabel>季度</InputLabel>
-                                                <Select
-                                                    value={selectedQuarter}
-                                                    onChange={(e) => setSelectedQuarter(e.target.value)}
-                                                    label="季度"
-                                                >
-                                                    <MenuItem value="">请选择季度</MenuItem>
-                                                    {QUARTERS.map((q) => (
-                                                        <MenuItem key={q.value} value={q.value}>{q.label}</MenuItem>
-                                                    ))}
-                                                </Select>
-                                            </FormControl>
-                                        </Grid>
-                                    )}
-
                                     <Grid item xs={12}>
                                         <Button
                                             variant="contained"
                                             color="secondary"
                                             startIcon={loading ? <CircularProgress size={20} /> : <AssessmentIcon />}
-                                            onClick={handleCheck}
-                                            disabled={loading || !selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear}
+                                            onClick={handleQuarterCheck}
+                                            disabled={loading || !selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedQuarter}
                                             fullWidth
                                             sx={{ py: 1.5 }}
                                         >
-                                            {loading ? '核对中...' : '执行核对'}
+                                            {loading ? '核对中...' : '执行季度核对'}
                                         </Button>
                                     </Grid>
                                 </Grid>
@@ -710,19 +672,13 @@ function Upload() {
                     <Paper sx={{ p: 3, height: '100%' }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                             <Typography variant="h6">📋 已上传文件</Typography>
-                            <IconButton size="small" onClick={loadUploadedFiles}>
-                                <RefreshIcon />
-                            </IconButton>
+                            <IconButton size="small" onClick={loadUploadedFiles}><RefreshIcon /></IconButton>
                         </Box>
 
                         {loading ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                                <CircularProgress />
-                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
                         ) : uploadedFiles.length === 0 ? (
-                            <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                                暂无上传文件
-                            </Typography>
+                            <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>暂无上传文件</Typography>
                         ) : (
                             <TableContainer>
                                 <Table size="small">
@@ -736,15 +692,8 @@ function Upload() {
                                         {uploadedFiles.slice(0, 10).map((file) => (
                                             <TableRow key={file.id}>
                                                 <TableCell>
-                                                    <Typography variant="caption" display="block">
-                                                        {getTenantName(file.tenant_id)}
-                                                    </Typography>
-                                                    <Chip 
-                                                        label={getPlatformName(file.platform)} 
-                                                        size="small" 
-                                                        variant="outlined"
-                                                        sx={{ fontSize: 10 }}
-                                                    />
+                                                    <Typography variant="caption" display="block">{getTenantName(file.tenant_id)}</Typography>
+                                                    <Chip label={getPlatformName(file.platform)} size="small" variant="outlined" sx={{ fontSize: 10 }} />
                                                 </TableCell>
                                                 <TableCell align="right">
                                                     <Tooltip title="删除">
@@ -755,15 +704,6 @@ function Upload() {
                                                 </TableCell>
                                             </TableRow>
                                         ))}
-                                        {uploadedFiles.length > 10 && (
-                                            <TableRow>
-                                                <TableCell colSpan={2} align="center">
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        还有 {uploadedFiles.length - 10} 个文件
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
                                     </TableBody>
                                 </Table>
                             </TableContainer>
@@ -772,22 +712,14 @@ function Upload() {
                 </Grid>
             </Grid>
 
-            {/* ===== 核对结果弹窗 ===== */}
+            {/* ===== 季度核对结果弹窗 ===== */}
             <Dialog open={openPreview} onClose={() => setOpenPreview(false)} maxWidth="md" fullWidth>
                 <DialogTitle>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="h6">
-                            📊 核对报告
-                        </Typography>
+                        <Typography variant="h6">📊 季度核对报告</Typography>
                         <Box>
-                            <Tooltip title="导出报告">
-                                <IconButton onClick={handleExport}>
-                                    <DownloadIcon />
-                                </IconButton>
-                            </Tooltip>
-                            <IconButton onClick={() => setOpenPreview(false)}>
-                                <CancelIcon />
-                            </IconButton>
+                            <IconButton onClick={handleExportReport}><DownloadIcon /></IconButton>
+                            <IconButton onClick={() => setOpenPreview(false)}><CloseIcon /></IconButton>
                         </Box>
                     </Box>
                 </DialogTitle>
@@ -797,84 +729,35 @@ function Upload() {
                             {/* 基本信息 */}
                             <Paper sx={{ p: 2, bgcolor: '#f5f5f5', mb: 2 }}>
                                 <Grid container spacing={2}>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" color="text.secondary">客户</Typography>
-                                        <Typography variant="body2">{getTenantName(checkResult.tenantId)}</Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" color="text.secondary">国家</Typography>
-                                        <Typography variant="body2">
-                                            {checkResult.countryName} ({checkResult.taxRate}%)
-                                        </Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" color="text.secondary">平台</Typography>
-                                        <Typography variant="body2">{getPlatformName(checkResult.platform)}</Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" color="text.secondary">期间</Typography>
-                                        <Typography variant="body2">
-                                            {checkResult.year} {checkResult.dimension === 'monthly' ? `- ${checkResult.month}月` : checkResult.quarter}
-                                        </Typography>
-                                    </Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">客户</Typography><Typography variant="body2">{checkResult.tenantName}</Typography></Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">国家</Typography><Typography variant="body2">{checkResult.countryName} ({checkResult.taxRate}%)</Typography></Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">平台</Typography><Typography variant="body2">{checkResult.platformName}</Typography></Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">期间</Typography><Typography variant="body2">{checkResult.year} {checkResult.quarter}</Typography></Grid>
                                 </Grid>
                             </Paper>
 
                             {/* 汇总数据 */}
                             <Grid container spacing={2}>
-                                <Grid item xs={4}>
-                                    <Card sx={{ bgcolor: '#e3f2fd' }}>
-                                        <CardContent sx={{ textAlign: 'center' }}>
-                                            <Typography variant="caption" color="text.secondary">净销售额</Typography>
-                                            <Typography variant="h6">€{checkResult.summary.totalNetAmount.toFixed(2)}</Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                                <Grid item xs={4}>
-                                    <Card sx={{ bgcolor: '#e8f5e9' }}>
-                                        <CardContent sx={{ textAlign: 'center' }}>
-                                            <Typography variant="caption" color="text.secondary">VAT</Typography>
-                                            <Typography variant="h6">€{checkResult.summary.totalVATAmount.toFixed(2)}</Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                                <Grid item xs={4}>
-                                    <Card sx={{ bgcolor: '#fff3e0' }}>
-                                        <CardContent sx={{ textAlign: 'center' }}>
-                                            <Typography variant="caption" color="text.secondary">订单数</Typography>
-                                            <Typography variant="h6">{checkResult.summary.totalOrders}</Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
+                                <Grid item xs={4}><Card sx={{ bgcolor: '#e3f2fd' }}><CardContent sx={{ textAlign: 'center' }}><Typography variant="caption" color="text.secondary">净销售额</Typography><Typography variant="h6">€{checkResult.summary.totalNet.toFixed(2)}</Typography></CardContent></Card></Grid>
+                                <Grid item xs={4}><Card sx={{ bgcolor: '#e8f5e9' }}><CardContent sx={{ textAlign: 'center' }}><Typography variant="caption" color="text.secondary">VAT</Typography><Typography variant="h6">€{checkResult.summary.totalVAT.toFixed(2)}</Typography></CardContent></Card></Grid>
+                                <Grid item xs={4}><Card sx={{ bgcolor: '#fff3e0' }}><CardContent sx={{ textAlign: 'center' }}><Typography variant="caption" color="text.secondary">订单数</Typography><Typography variant="h6">{checkResult.summary.totalOrders}</Typography></CardContent></Card></Grid>
                             </Grid>
 
                             {/* 税务核对 */}
                             <Paper sx={{ p: 2, mt: 2 }}>
                                 <Typography variant="subtitle2" gutterBottom>税务核对</Typography>
                                 <Grid container spacing={2}>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" color="text.secondary">应缴VAT ({checkResult.taxRate}%)</Typography>
-                                        <Typography>€{checkResult.summary.expectedVAT.toFixed(2)}</Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" color="text.secondary">实际VAT</Typography>
-                                        <Typography>€{checkResult.summary.totalVATAmount.toFixed(2)}</Typography>
-                                    </Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">应缴VAT ({checkResult.taxRate}%)</Typography><Typography>€{checkResult.summary.expectedVAT.toFixed(2)}</Typography></Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">实际VAT</Typography><Typography>€{checkResult.summary.totalVAT.toFixed(2)}</Typography></Grid>
                                 </Grid>
                                 <Divider sx={{ my: 1 }} />
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="caption" color="text.secondary">差异</Typography>
-                                    <Typography color={checkResult.summary.vatMatch ? 'success.main' : 'warning.main'}>
-                                        €{checkResult.summary.vatDifference.toFixed(2)}
-                                    </Typography>
+                                    <Typography color={checkResult.summary.vatMatch ? 'success.main' : 'warning.main'}>€{checkResult.summary.vatDifference.toFixed(2)}</Typography>
                                 </Box>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                                     <Typography variant="caption" color="text.secondary">状态</Typography>
-                                    <Chip 
-                                        label={checkResult.status} 
-                                        color={checkResult.summary.vatMatch ? 'success' : 'warning'}
-                                        size="small"
-                                    />
+                                    <Chip label={checkResult.status} color={checkResult.summary.vatMatch ? 'success' : 'warning'} size="small" />
                                 </Box>
                                 <Box sx={{ mt: 1 }}>
                                     <Typography variant="caption" color="text.secondary">建议</Typography>
@@ -883,22 +766,14 @@ function Upload() {
                             </Paper>
 
                             {/* 月度明细 */}
-                            {Object.keys(checkResult.breakdown).length > 0 && (
+                            {Object.keys(checkResult.monthsData).length > 0 && (
                                 <>
                                     <Typography variant="subtitle2" sx={{ mt: 2 }} gutterBottom>月度明细</Typography>
                                     <TableContainer>
                                         <Table size="small">
-                                            <TableHead>
-                                                <TableRow>
-                                                    <TableCell>月份</TableCell>
-                                                    <TableCell align="right">净销售额</TableCell>
-                                                    <TableCell align="right">VAT</TableCell>
-                                                    <TableCell align="right">总金额</TableCell>
-                                                    <TableCell align="right">订单数</TableCell>
-                                                </TableRow>
-                                            </TableHead>
+                                            <TableHead><TableRow><TableCell>月份</TableCell><TableCell align="right">净销售额</TableCell><TableCell align="right">VAT</TableCell><TableCell align="right">总金额</TableCell><TableCell align="right">订单数</TableCell></TableRow></TableHead>
                                             <TableBody>
-                                                {Object.entries(checkResult.breakdown).map(([month, data]) => (
+                                                {Object.entries(checkResult.monthsData).map(([month, data]) => (
                                                     <TableRow key={month}>
                                                         <TableCell>{month}月</TableCell>
                                                         <TableCell align="right">€{data.net.toFixed(2)}</TableCell>
@@ -921,11 +796,21 @@ function Upload() {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setOpenPreview(false)}>关闭</Button>
-                    <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExport}>
-                        导出报告
-                    </Button>
+                    <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExportReport}>导出报告</Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Snackbar */}
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={4000}
+                onClose={() => setSnackbar({ ...snackbar, open: false })}
+                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+            >
+                <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
         </Box>
     );
 }

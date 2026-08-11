@@ -29,7 +29,8 @@ import {
     Receipt as ReceiptIcon,
     Settings as SettingsIcon,
     Logout as LogoutIcon,
-    Calculate as CalculateIcon
+    Calculate as CalculateIcon,
+    Business as BusinessIcon
 } from '@mui/icons-material';
 
 const drawerWidth = 280;
@@ -39,7 +40,7 @@ const menuItems = [
     { path: '/dashboard', label: '概览看板', icon: <DashboardIcon /> },
     { path: '/tenants', label: '客户管理', icon: <PeopleIcon /> },
     { path: '/upload', label: '文件上传', icon: <UploadIcon /> },
-    { path: '/tax-validation', label: '税务校验', icon: <CalculateIcon /> },  // ← 税务校验
+    { path: '/tax-validation', label: '税务校验', icon: <CalculateIcon /> },
     { path: '/reports', label: '申报报告', icon: <AssessmentIcon /> },
     { path: '/transactions', label: '交易记录', icon: <ReceiptIcon /> },
     { path: '/settings', label: '系统设置', icon: <SettingsIcon /> },
@@ -61,6 +62,10 @@ function Layout() {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [anchorEl, setAnchorEl] = useState(null);
 
+    // ===== 获取当前用户信息 =====
+    const user = safeParseJSON(localStorage.getItem('user'));
+    const tenantId = localStorage.getItem('tenantId') || '未分配';
+
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
     };
@@ -76,15 +81,27 @@ function Layout() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem('tenantId');
         navigate('/login');
         handleMenuClose();
     };
 
-    const user = safeParseJSON(localStorage.getItem('user'));
+    // ===== 获取当前页面标题 =====
+    const currentPage = menuItems.find(item => 
+        location.pathname === item.path || location.pathname.startsWith(item.path + '/')
+    );
 
     const drawer = (
         <Box>
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+            {/* Logo区域 */}
+            <Box sx={{ 
+                p: 2, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 2, 
+                borderBottom: '1px solid', 
+                borderColor: 'divider' 
+            }}>
                 <Avatar sx={{ bgcolor: theme.palette.primary.main }}>V</Avatar>
                 <Box>
                     <Typography variant="h6" sx={{ fontWeight: 'bold' }}>VATFlow</Typography>
@@ -92,6 +109,30 @@ function Layout() {
                 </Box>
             </Box>
 
+            {/* ===== 租户信息显示 ===== */}
+            <Box sx={{ 
+                p: 2, 
+                borderBottom: '1px solid', 
+                borderColor: 'divider',
+                bgcolor: '#f5f5f5'
+            }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BusinessIcon fontSize="small" color="primary" />
+                    <Box>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                            当前租户
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {user?.company || user?.name || '未命名租户'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                            ID: {tenantId}
+                        </Typography>
+                    </Box>
+                </Box>
+            </Box>
+
+            {/* 菜单列表 */}
             <List sx={{ px: 2, py: 1 }}>
                 {menuItems.map((item) => {
                     const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
@@ -134,6 +175,7 @@ function Layout() {
                 })}
             </List>
 
+            {/* 底部信息 */}
             <Divider sx={{ mx: 2 }} />
             <Box sx={{ p: 2 }}>
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ textAlign: 'center' }}>
@@ -148,6 +190,7 @@ function Layout() {
 
     return (
         <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+            {/* ===== 顶部导航栏 ===== */}
             <AppBar
                 position="fixed"
                 sx={{
@@ -170,18 +213,29 @@ function Layout() {
                         <MenuIcon />
                     </IconButton>
 
+                    {/* 当前页面标题 */}
                     <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 600 }}>
-                        {menuItems.find(item => item.path === location.pathname)?.label || 'VATFlow'}
+                        {currentPage?.label || 'VATFlow'}
                     </Typography>
 
+                    {/* ===== 租户信息（顶部右侧） ===== */}
+                    <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1, mr: 2 }}>
+                        <BusinessIcon fontSize="small" color="action" />
+                        <Typography variant="caption" color="text.secondary">
+                            {user?.company || user?.name || '租户'}
+                        </Typography>
+                    </Box>
+
+                    {/* 用户头像 */}
                     <Tooltip title="账户">
                         <IconButton onClick={handleMenuOpen} sx={{ p: 0 }}>
                             <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
-                                {user?.name?.[0] || 'A'}
+                                {user?.name?.[0] || user?.company?.[0] || 'A'}
                             </Avatar>
                         </IconButton>
                     </Tooltip>
 
+                    {/* 用户菜单 */}
                     <Menu
                         anchorEl={anchorEl}
                         open={Boolean(anchorEl)}
@@ -191,8 +245,15 @@ function Layout() {
                     >
                         <MenuItem disabled>
                             <Box>
-                                <Typography variant="body2" fontWeight={600}>{user?.name || '管理员'}</Typography>
-                                <Typography variant="caption" color="text.secondary">{user?.email || 'admin@vatflow.com'}</Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {user?.name || '管理员'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                    {user?.email || 'admin@vatflow.com'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                    🏢 {user?.company || '租户'}
+                                </Typography>
                             </Box>
                         </MenuItem>
                         <Divider />
@@ -204,10 +265,12 @@ function Layout() {
                 </Toolbar>
             </AppBar>
 
+            {/* ===== 侧边栏 ===== */}
             <Box
                 component="nav"
                 sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
             >
+                {/* 移动端侧边栏 */}
                 <Drawer
                     variant="temporary"
                     open={mobileOpen}
@@ -220,11 +283,18 @@ function Layout() {
                 >
                     {drawer}
                 </Drawer>
+                
+                {/* 桌面端侧边栏 */}
                 <Drawer
                     variant="permanent"
                     sx={{
                         display: { xs: 'none', sm: 'block' },
-                        '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, borderRight: '1px solid', borderColor: 'divider' },
+                        '& .MuiDrawer-paper': { 
+                            boxSizing: 'border-box', 
+                            width: drawerWidth, 
+                            borderRight: '1px solid', 
+                            borderColor: 'divider' 
+                        },
                     }}
                     open
                 >
@@ -232,7 +302,7 @@ function Layout() {
                 </Drawer>
             </Box>
 
-            {/* ===== 主内容区域：使用 Outlet 渲染子路由 ===== */}
+            {/* ===== 主内容区域 ===== */}
             <Box
                 component="main"
                 sx={{
@@ -243,7 +313,10 @@ function Layout() {
                     minHeight: '100vh',
                 }}
             >
+                {/* 占位空间（防止被顶部导航栏遮挡） */}
                 <Toolbar />
+                
+                {/* 渲染子路由 */}
                 <Outlet />
             </Box>
         </Box>
