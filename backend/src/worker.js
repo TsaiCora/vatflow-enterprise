@@ -1,4 +1,4 @@
-// backend/src/worker.js - 完整版
+// backend/src/worker.js
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import * as bcrypt from 'bcryptjs'
@@ -68,18 +68,25 @@ app.get('/', (c) => {
             'POST /api/v1/vat-profiles',
             'GET /api/v1/transactions',
             'POST /api/v1/transactions',
+            'POST /api/v1/transactions/batch',
+            'GET /api/v1/transactions/stats',
             'GET /api/v1/settings/:key',
             'GET /api/v1/settings',
             'POST /api/v1/settings',
             'GET /api/v1/dashboard',
             'GET /api/v1/reports',
+            'POST /api/v1/reports/generate',
             'POST /api/v1/tax/validate',
+            'POST /api/v1/tax/validate-batch',
             'POST /api/v1/tax/summary',
             'POST /api/v1/tax/c79/upload',
             'POST /api/v1/tax/c88/upload',
             'GET /api/v1/tax/countries',
             'GET /api/v1/tax/platforms',
-            'GET /api/v1/tax/ecommerce-platforms'
+            'GET /api/v1/tax/ecommerce-platforms',
+            'POST /api/v1/files/upload',
+            'GET /api/v1/files',
+            'DELETE /api/v1/files/:id'
         ]
     })
 })
@@ -341,6 +348,74 @@ app.post('/api/v1/transactions', async (c) => {
 })
 
 // =============================================
+// ===== 批量创建交易 =====
+// =============================================
+app.post('/api/v1/transactions/batch', async (c) => {
+    try {
+        const transactions = await c.req.json();
+        if (!transactions || !transactions.length) {
+            return c.json({ error: '没有数据' }, 400);
+        }
+
+        let created = 0;
+        for (const item of transactions) {
+            await c.env.DB.prepare(
+                `INSERT INTO transactions 
+                (tenant_id, order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))`
+            ).bind(
+                item.tenant_id, item.order_id || `ORD-${Date.now()}-${created}`,
+                item.order_date || new Date().toISOString().split('T')[0],
+                item.country, item.vat_number || '',
+                item.net_amount || 0, item.vat_amount || 0,
+                (item.net_amount || 0) + (item.vat_amount || 0),
+                item.tax_rate || 20,
+                item.period || '',
+                item.platform || '',
+                item.status || 'pending',
+                item.product_sku || '',
+                item.quantity || 1
+            ).run();
+            created++;
+        }
+
+        return c.json({
+            success: true,
+            message: `成功创建 ${created} 条交易记录`,
+            count: created
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// =============================================
+// ===== 交易统计 =====
+// =============================================
+app.get('/api/v1/transactions/stats', async (c) => {
+    try {
+        const { results } = await c.env.DB.prepare(
+            `SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) as validated,
+                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error,
+                SUM(CASE WHEN status = 'reported' THEN 1 ELSE 0 END) as reported,
+                SUM(net_amount) as total_net,
+                SUM(vat_amount) as total_vat
+            FROM transactions`
+        ).all();
+
+        return c.json({
+            success: true,
+            data: results[0] || { total: 0, pending: 0, validated: 0, error: 0, reported: 0, total_net: 0, total_vat: 0 }
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// =============================================
 // ===== 系统设置 =====
 // =============================================
 app.get('/api/v1/settings/:key', async (c) => {
@@ -410,7 +485,7 @@ app.get('/api/v1/dashboard', async (c) => {
 })
 
 // =============================================
-// ===== Reports =====
+// ===== 报告接口 =====
 // =============================================
 app.get('/api/v1/reports', async (c) => {
     try {
@@ -423,21 +498,91 @@ app.get('/api/v1/reports', async (c) => {
     }
 })
 
+app.post('/api/v1/reports/generate', async (c) => {
+    try {
+        const { transactionIds, filters } = await c.req.json();
+        
+        let query = 'SELECT * FROM transactions WHERE 1=1';
+        const params = [];
+        
+        if (transactionIds && transactionIds.length) {
+            query += ` AND id IN (${transactionIds.map(() => '?').join(',')})`;
+            params.push(...transactionIds);
+        }
+        if (filters?.tenantId) {
+            query += ' AND tenant_id = ?';
+            params.push(filters.tenantId);
+        }
+        if (filters?.country) {
+            query += ' AND country = ?';
+            params.push(filters.country);
+        }
+        if (filters?.platform) {
+            query += ' AND platform = ?';
+            params.push(filters.platform);
+        }
+        if (filters?.startDate) {
+            query += ' AND order_date >= ?';
+            params.push(filters.startDate);
+        }
+        if (filters?.endDate) {
+            query += ' AND order_date <= ?';
+            params.push(filters.endDate);
+        }
+
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
+        
+        let totalNet = 0, totalVat = 0, totalGross = 0;
+        results.forEach(t => {
+            totalNet += t.net_amount || 0;
+            totalVat += t.vat_amount || 0;
+            totalGross += t.gross_amount || 0;
+        });
+
+        const reportId = 'RPT-' + Date.now();
+        
+        await c.env.DB.prepare(
+            `INSERT INTO filings 
+            (filing_id, tenant_id, country, platform, period, total_net, total_vat, total_gross, transaction_count, status, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))`
+        ).bind(
+            reportId,
+            filters?.tenantId || '',
+            filters?.country || '',
+            filters?.platform || '',
+            filters?.period || '',
+            totalNet, totalVat, totalGross,
+            results.length,
+            'draft'
+        ).run();
+
+        return c.json({
+            success: true,
+            message: '报告生成成功',
+            reportId,
+            data: {
+                id: reportId,
+                totalNet,
+                totalVat,
+                totalGross,
+                transactionCount: results.length
+            }
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
 // =============================================
 // ===== 税务接口 =====
 // =============================================
 app.post('/api/v1/tax/validate', async (c) => {
     try {
         const body = await c.req.json()
-        console.log('📤 税务校验请求:', body)
-
         const { vatNumber, amount, country, period } = body
         
         if (!vatNumber || !country) {
-            return c.json({
-                success: false,
-                error: 'VAT号码和国家为必填项'
-            }, 400)
+            return c.json({ success: false, error: 'VAT号码和国家为必填项' }, 400)
         }
 
         const countryCode = country.toUpperCase()
@@ -449,7 +594,6 @@ app.post('/api/v1/tax/validate', async (c) => {
         const vatAmount = netAmount * (taxRate / 100)
         const grossAmount = netAmount + vatAmount
 
-        // 简单格式验证
         let valid = true
         let message = 'VAT 号码有效'
 
@@ -514,20 +658,49 @@ app.post('/api/v1/tax/validate', async (c) => {
                 timestamp: new Date().toISOString()
             }
         })
-
     } catch (error) {
         console.error('❌ 税务校验错误:', error)
+        return c.json({ success: false, error: error.message || '税务校验失败' }, 500)
+    }
+})
+
+app.post('/api/v1/tax/validate-batch', async (c) => {
+    try {
+        const { transactionIds } = await c.req.json();
+        const { results } = await c.env.DB.prepare(
+            `SELECT * FROM transactions WHERE id IN (${transactionIds.map(() => '?').join(',')})`
+        ).bind(...transactionIds).all();
+
+        let validCount = 0;
+        let invalidCount = 0;
+
+        for (const transaction of results) {
+            const taxRate = TAX_RATES[transaction.country] || 20;
+            const expectedVAT = transaction.net_amount * (taxRate / 100);
+            const isValid = Math.abs(transaction.vat_amount - expectedVAT) < 1;
+            
+            await c.env.DB.prepare(
+                `UPDATE transactions SET status = ?, tax_validated = ? WHERE id = ?`
+            ).bind(isValid ? 'validated' : 'error', isValid ? 1 : 0, transaction.id).run();
+
+            if (isValid) validCount++;
+            else invalidCount++;
+        }
+
         return c.json({
-            success: false,
-            error: error.message || '税务校验失败'
-        }, 500)
+            success: true,
+            validCount,
+            invalidCount,
+            total: results.length
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
     }
 })
 
 app.post('/api/v1/tax/summary', async (c) => {
     try {
         const { importData, salesData } = await c.req.json()
-        // 简单计算摘要
         const totalImportVat = importData?.reduce((sum, item) => sum + (item.totalImportVat || 0), 0) || 0
         const totalSalesVat = salesData?.reduce((sum, item) => sum + (item.vatAmount || 0), 0) || 0
         return c.json({
@@ -602,6 +775,110 @@ app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
         return c.json({ error: error.message }, 500)
     }
 })
+
+// =============================================
+// ===== 文件上传接口 =====
+// =============================================
+app.post('/api/v1/files/upload', async (c) => {
+    try {
+        const body = await c.req.parseBody();
+        const files = body['files'];
+        const tenantId = body['tenantId'];
+        const country = body['country'];
+        const platform = body['platform'];
+        const year = body['year'];
+        const month = body['month'];
+
+        if (!files) {
+            return c.json({ error: '没有文件' }, 400);
+        }
+
+        const fileArray = Array.isArray(files) ? files : [files];
+        const transactions = [];
+
+        for (const file of fileArray) {
+            const content = await file.text();
+            const lines = content.split('\n').filter(line => line.trim());
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(',');
+                if (parts.length >= 3) {
+                    const netAmount = parseFloat(parts[1]) || 0;
+                    const vatAmount = parseFloat(parts[2]) || 0;
+                    transactions.push({
+                        tenant_id: tenantId,
+                        order_id: parts[0] || `ORD-${Date.now()}-${i}`,
+                        order_date: new Date().toISOString().split('T')[0],
+                        country: country,
+                        vat_number: `VAT-${country}${Date.now()}`,
+                        net_amount: netAmount,
+                        vat_amount: vatAmount,
+                        gross_amount: netAmount + vatAmount,
+                        tax_rate: TAX_RATES[country] || 20,
+                        period: `${year}-${month}`,
+                        platform: platform,
+                        status: 'pending',
+                        product_sku: parts[3] || '',
+                        quantity: parseInt(parts[4]) || 1
+                    });
+                }
+            }
+        }
+
+        return c.json({
+            success: true,
+            message: `上传成功，解析 ${transactions.length} 条记录`,
+            data: {
+                processed: transactions.length,
+                transactions: transactions
+            }
+        });
+    } catch (error) {
+        console.error('❌ 文件上传错误:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// =============================================
+// ===== 获取文件列表 =====
+// =============================================
+app.get('/api/v1/files', async (c) => {
+    try {
+        const tenantId = c.req.query('tenantId');
+        const country = c.req.query('country');
+        const platform = c.req.query('platform');
+        const year = c.req.query('year');
+        const month = c.req.query('month');
+
+        let query = 'SELECT * FROM transactions WHERE 1=1';
+        const params = [];
+
+        if (tenantId) { query += ' AND tenant_id = ?'; params.push(tenantId); }
+        if (country) { query += ' AND country = ?'; params.push(country); }
+        if (platform) { query += ' AND platform = ?'; params.push(platform); }
+        if (year) { query += ' AND substr(period, 1, 4) = ?'; params.push(year); }
+        if (month) { query += ' AND substr(period, 6, 2) = ?'; params.push(month); }
+
+        query += ' ORDER BY created_at DESC LIMIT 1000';
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
+
+        return c.json({ success: true, data: results, total: results.length });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// =============================================
+// ===== 删除文件/交易 =====
+// =============================================
+app.delete('/api/v1/files/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        await c.env.DB.prepare('DELETE FROM transactions WHERE id = ?').bind(id).run();
+        return c.json({ success: true, message: '删除成功' });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
 
 // =============================================
 // ===== 404 =====
