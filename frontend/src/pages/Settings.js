@@ -27,26 +27,21 @@ import {
     CheckCircle as CheckCircleIcon,
     Error as ErrorIcon
 } from '@mui/icons-material';
-import { settingsAPI } from '../services/api';
 
 function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [settings, setSettings] = useState({
-        // 基本设置
         systemName: 'VATFlow',
         currency: 'EUR',
         vatRate: 20,
         maintenanceMode: false,
-        // 税务设置
         taxPeriod: 'quarterly',
         defaultCountry: 'GB',
         autoValidate: false,
-        // 通知设置
         emailNotifications: false,
         smsNotifications: false,
         pushNotifications: false,
-        // 其他
         language: 'zh-CN',
         timezone: 'UTC+8',
         dateFormat: 'YYYY-MM-DD'
@@ -64,16 +59,45 @@ function Settings() {
         setLoading(true);
         setError(null);
         try {
-            const result = await settingsAPI.getSettings();
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            
+            const response = await fetch('https://api.vatapex.com/api/v1/settings', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || ''
+                }
+            });
+            
+            if (!response.ok) {
+                console.log('使用默认设置');
+                setSettings({
+                    systemName: 'VATFlow',
+                    currency: 'EUR',
+                    vatRate: 20,
+                    maintenanceMode: false,
+                    taxPeriod: 'quarterly',
+                    defaultCountry: 'GB',
+                    autoValidate: false,
+                    emailNotifications: false,
+                    smsNotifications: false,
+                    pushNotifications: false,
+                    language: 'zh-CN',
+                    timezone: 'UTC+8',
+                    dateFormat: 'YYYY-MM-DD'
+                });
+                setLoading(false);
+                return;
+            }
+            
+            const result = await response.json();
             console.log('⚙️ 设置数据:', result);
             
             if (result && result.success) {
                 const data = result.data || {};
-                // 合并设置
                 setSettings(prev => ({
                     ...prev,
                     ...data,
-                    // 确保布尔值正确
                     maintenanceMode: data.maintenanceMode === true || data.maintenanceMode === 'true',
                     autoValidate: data.autoValidate === true || data.autoValidate === 'true',
                     emailNotifications: data.emailNotifications === true || data.emailNotifications === 'true',
@@ -81,12 +105,40 @@ function Settings() {
                     pushNotifications: data.pushNotifications === true || data.pushNotifications === 'true'
                 }));
             } else {
-                // 如果API没有数据，使用默认值
-                console.log('使用默认设置');
+                setSettings({
+                    systemName: 'VATFlow',
+                    currency: 'EUR',
+                    vatRate: 20,
+                    maintenanceMode: false,
+                    taxPeriod: 'quarterly',
+                    defaultCountry: 'GB',
+                    autoValidate: false,
+                    emailNotifications: false,
+                    smsNotifications: false,
+                    pushNotifications: false,
+                    language: 'zh-CN',
+                    timezone: 'UTC+8',
+                    dateFormat: 'YYYY-MM-DD'
+                });
             }
         } catch (err) {
             console.error('❌ 加载设置失败:', err);
             setError('加载设置失败，使用默认配置');
+            setSettings({
+                systemName: 'VATFlow',
+                currency: 'EUR',
+                vatRate: 20,
+                maintenanceMode: false,
+                taxPeriod: 'quarterly',
+                defaultCountry: 'GB',
+                autoValidate: false,
+                emailNotifications: false,
+                smsNotifications: false,
+                pushNotifications: false,
+                language: 'zh-CN',
+                timezone: 'UTC+8',
+                dateFormat: 'YYYY-MM-DD'
+            });
         } finally {
             setLoading(false);
         }
@@ -98,7 +150,20 @@ function Settings() {
         setError(null);
         setSuccess(false);
         try {
-            const result = await settingsAPI.updateSettings(settings);
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            
+            const response = await fetch('https://api.vatapex.com/api/v1/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || ''
+                },
+                body: JSON.stringify(settings)
+            });
+            
+            const result = await response.json();
             console.log('💾 保存设置结果:', result);
             
             if (result && result.success) {
@@ -136,8 +201,6 @@ function Settings() {
             ...prev,
             [field]: !prev[field]
         }));
-        // 实时显示切换状态
-        console.log(`🔄 ${field}:`, !settings[field]);
     };
 
     // ===== 输入变更 =====
@@ -289,12 +352,7 @@ function Settings() {
                                     }
                                 />
                                 {settings.maintenanceMode && (
-                                    <Chip 
-                                        label="维护中" 
-                                        color="warning" 
-                                        size="small" 
-                                        sx={{ ml: 2 }}
-                                    />
+                                    <Chip label="维护中" color="warning" size="small" sx={{ ml: 2 }} />
                                 )}
                             </Grid>
                         </Grid>
@@ -506,11 +564,7 @@ function Settings() {
                 {/* ===== 重置按钮 ===== */}
                 <Grid item xs={12}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                        <Button 
-                            variant="outlined" 
-                            color="error" 
-                            onClick={handleReset}
-                        >
+                        <Button variant="outlined" color="error" onClick={handleReset}>
                             恢复默认设置
                         </Button>
                     </Box>
@@ -524,10 +578,7 @@ function Settings() {
                 onClose={() => setSnackbar({ ...snackbar, open: false })}
                 anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
             >
-                <Alert 
-                    severity={snackbar.severity} 
-                    onClose={() => setSnackbar({ ...snackbar, open: false })}
-                >
+                <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
                     {snackbar.message}
                 </Alert>
             </Snackbar>
