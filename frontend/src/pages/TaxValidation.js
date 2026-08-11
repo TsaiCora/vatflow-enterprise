@@ -1,5 +1,8 @@
 // frontend/src/pages/TaxValidation.js
-import React, { useState, useEffect } from 'react';
+// ============================================================
+// 🔥🔥🔥 税务校验页面 - 版本 2026-08-11-v3 🔥🔥🔥
+// ============================================================
+import React, { useState } from 'react';
 import {
     Box,
     Typography,
@@ -17,13 +20,9 @@ import {
     Select,
     Snackbar
 } from '@mui/material';
-import {
-    Send as SendIcon,
-    CheckCircle as CheckCircleIcon,
-    Error as ErrorIcon
-} from '@mui/icons-material';
+import { Send as SendIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon } from '@mui/icons-material';
 
-// ===== 国家列表 =====
+// ===== 国家列表（43个国家）=====
 const ALL_COUNTRIES = [
     { code: 'GB', name: '英国', flag: '🇬🇧', taxRate: 20 },
     { code: 'FR', name: '法国', flag: '🇫🇷', taxRate: 20 },
@@ -62,6 +61,8 @@ const ALL_COUNTRIES = [
 ];
 
 function TaxValidation() {
+    console.log('🔥🔥🔥 TaxValidation 组件已渲染 v3 🔥🔥🔥');
+
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
@@ -79,8 +80,11 @@ function TaxValidation() {
     };
 
     const handleValidate = async () => {
-        // 验证 token
+        console.log('🔄 点击执行校验按钮');
+        
         const token = localStorage.getItem('token');
+        console.log('🔑 Token:', token ? '存在' : '不存在');
+
         if (!token) {
             setError('请先登录');
             setSnackbar({ open: true, message: '请先登录', severity: 'warning' });
@@ -99,25 +103,26 @@ function TaxValidation() {
         setSuccess(false);
 
         try {
-            console.log('📤 发送请求:', formData);
+            const requestBody = {
+                vatNumber: formData.vatNumber,
+                amount: formData.amount,
+                country: formData.country,
+                period: formData.period
+            };
+            console.log('📤 发送请求:', requestBody);
 
-            // 直接使用 fetch，绕过 api.js 拦截器
             const response = await fetch('https://api.vatapex.com/api/v1/tax/validate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    vatNumber: formData.vatNumber,
-                    amount: formData.amount,
-                    country: formData.country,
-                    period: formData.period
-                })
+                body: JSON.stringify(requestBody)
             });
 
+            console.log('📥 响应状态:', response.status);
             const data = await response.json();
-            console.log('📥 响应:', data);
+            console.log('📥 响应数据:', data);
 
             if (response.status === 401) {
                 setError('登录已过期，请重新登录');
@@ -171,7 +176,6 @@ function TaxValidation() {
 
     return (
         <Box sx={{ p: 3 }}>
-            {/* 标题 */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>✅ 税务校验</Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
@@ -187,21 +191,18 @@ function TaxValidation() {
                 </Box>
             </Box>
 
-            {/* 错误提示 */}
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)} icon={<ErrorIcon />}>
                     {error}
                 </Alert>
             )}
 
-            {/* 成功提示 */}
             {success && result && (
                 <Alert severity="success" sx={{ mb: 3 }} icon={<CheckCircleIcon />}>
                     ✅ 校验通过！VAT号码有效。
                 </Alert>
             )}
 
-            {/* 表单和结果 */}
             <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                     <Card>
