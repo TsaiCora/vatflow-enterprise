@@ -21,8 +21,22 @@ function Login() {
             console.log('📥 登录响应:', data);
 
             if (data.success) {
-                localStorage.setItem('token', data.data.token || 'dummy-token');
-                localStorage.setItem('user', JSON.stringify(data.data.user));
+                // ===== 存储用户信息 =====
+                const user = data.data.user;
+                const token = data.data.token;
+                
+                localStorage.setItem('token', token);
+                localStorage.setItem('user', JSON.stringify(user));
+                
+                // ===== 存储租户ID（关键！）=====
+                if (user && user.tenant_id) {
+                    localStorage.setItem('tenantId', user.tenant_id);
+                    console.log('🏢 当前租户ID:', user.tenant_id);
+                } else {
+                    // 如果没有租户ID，使用默认值
+                    localStorage.setItem('tenantId', 'default');
+                }
+                
                 window.location.href = '/dashboard';
             } else {
                 setError(data.error || '登录失败');
@@ -75,11 +89,6 @@ function Login() {
                     {loading ? '登录中...' : '登录'}
                 </button>
             </form>
-
-            {/* ===== 删除演示账号文字 ===== */}
-            {/* <p style={{ textAlign: 'center', marginTop: 15, fontSize: 12, color: '#999' }}>
-                演示账号: admin@vatflow.com / admin123
-            </p> */}
         </div>
     );
 }

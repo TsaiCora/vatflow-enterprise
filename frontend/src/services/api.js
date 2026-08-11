@@ -21,14 +21,25 @@ window.fetch = function(url, options) {
     return originalFetch.call(this, url, options);
 };
 
-// 请求拦截器
+// 请求拦截器 - 添加 Token 和 Tenant ID
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('token');
+        const tenantId = localStorage.getItem('tenantId');
+        
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
-        console.log('📤 API 请求:', config.method.toUpperCase(), config.url, config.data || '');
+        
+        // ===== 添加租户ID到请求头 =====
+        if (tenantId) {
+            config.headers['X-Tenant-ID'] = tenantId;
+        }
+        
+        console.log('📤 API 请求:', config.method.toUpperCase(), config.url, {
+            tenantId: tenantId,
+            data: config.data || ''
+        });
         return config;
     },
     (error) => {
@@ -37,7 +48,7 @@ api.interceptors.request.use(
     }
 );
 
-// ===== 响应拦截器 - 修复版 =====
+// 响应拦截器
 api.interceptors.response.use(
     (response) => {
         console.log('📥 API 响应:', response.config.url, response.status);
@@ -47,17 +58,15 @@ api.interceptors.response.use(
         console.error('❌ API 响应错误:', error);
         
         if (error.response) {
-            // 401 未授权
             if (error.response.status === 401) {
                 const currentPath = window.location.pathname;
                 const isLoginPage = currentPath === '/login';
                 const isLoginRequest = error.config?.url?.includes('/auth/login');
                 
-                // 清除无效 token
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
+                localStorage.removeItem('tenantId');
                 
-                // 如果是登录请求失败，不跳转
                 if (isLoginRequest) {
                     return Promise.reject({
                         status: 401,
@@ -65,10 +74,7 @@ api.interceptors.response.use(
                     });
                 }
                 
-                // 如果不在登录页，延迟跳转
                 if (!isLoginPage) {
-                    // 显示错误信息后再跳转
-                    console.warn('🔒 登录已过期，即将跳转到登录页');
                     setTimeout(() => {
                         window.location.href = '/login';
                     }, 2000);
@@ -80,7 +86,6 @@ api.interceptors.response.use(
                 });
             }
             
-            // 其他 HTTP 错误
             return Promise.reject({
                 status: error.response.status,
                 message: error.response.data?.error || error.response.data?.message || '请求失败',
@@ -102,19 +107,26 @@ api.interceptors.response.use(
     }
 );
 
-// ===== 认证 API =====
+// =============================================
+// ===== API 方法 =====
+// =============================================
+
 export const authAPI = {
     login: (email, password) => api.post('/api/v1/auth/login', { email, password }),
-    logout: () => api.post('/api/v1/auth/logout'),
+    logout: () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('tenantId');
+        return api.post('/api/v1/auth/logout');
+    },
     getCurrentUser: () => api.get('/api/v1/auth/me'),
     updatePassword: (currentPassword, newPassword) => 
         api.put('/api/v1/auth/password', { currentPassword, newPassword }),
     resetPassword: (email) => api.post('/api/v1/auth/reset-password', { email })
 };
 
-// ===== 租户 API =====
 export const tenantAPI = {
-    getTenants: (params) => api.get('/api/v1/tenants', { params }),
+    getTenants: () => api.get('/api/v1/tenants'),
     getTenant: (tenantId) => api.get(`/api/v1/tenants/${tenantId}`),
     createTenant: (data) => api.post('/api/v1/tenants', data),
     updateTenant: (tenantId, data) => api.put(`/api/v1/tenants/${tenantId}`, data),
@@ -123,23 +135,21 @@ export const tenantAPI = {
     getStats: (tenantId) => api.get(`/api/v1/tenants/${tenantId}/stats`)
 };
 
-// ===== 国家 API =====
 export const countryAPI = {
     getCountries: () => api.get('/api/v1/countries'),
 };
 
-// ===== 平台 API =====
 export const platformAPI = {
     getPlatforms: () => api.get('/api/v1/platforms'),
     getTenantPlatforms: (tenantId) => api.get(`/api/v1/tenants/${tenantId}/platforms`),
     bindPlatform: (tenantId, data) => api.post(`/api/v1/tenants/${tenantId}/platforms`, data),
 };
 
-// ===== 税务 API =====
 export const taxAPI = {
     getTaxPlatforms: () => api.get('/api/v1/tax/platforms'),
     getEcommercePlatforms: () => api.get('/api/v1/tax/ecommerce-platforms'),
     validate: (data) => api.post('/api/v1/tax/validate', data),
+    validateBatch: (data) => api.post('/api/v1/tax/validate-batch', data),
     summary: (data) => api.post('/api/v1/tax/summary', data),
     uploadC79: (file) => {
         const formData = new FormData();
@@ -165,7 +175,6 @@ export const taxAPI = {
     }
 };
 
-// ===== 文件 API =====
 export const fileAPI = {
     upload: (files, onProgress) => {
         const formData = new FormData();
@@ -187,7 +196,6 @@ export const fileAPI = {
     getStats: () => api.get('/api/v1/files/stats')
 };
 
-// ===== 报告 API =====
 export const reportAPI = {
     getReports: (params) => api.get('/api/v1/reports', { params }),
     getReport: (reportId) => api.get(`/api/v1/reports/${reportId}`),
@@ -203,12 +211,12 @@ export const reportAPI = {
     preview: (reportId) => api.get(`/api/v1/reports/${reportId}/preview`)
 };
 
-// ===== 交易 API =====
 export const transactionAPI = {
     getTransactions: (params) => api.get('/api/v1/transactions', { params }),
     getTransaction: (id) => api.get(`/api/v1/transactions/${id}`),
     getStats: (params) => api.get('/api/v1/transactions/stats', { params }),
     updateStatus: (id, status) => api.put(`/api/v1/transactions/${id}/status`, { status }),
+    batchCreate: (data) => api.post('/api/v1/transactions/batch', data),
     batchUpdate: (ids, status) => api.post('/api/v1/transactions/batch-update', { transactionIds: ids, status }),
     deleteTransaction: (id) => api.delete(`/api/v1/transactions/${id}`),
     batchDelete: (ids) => api.post('/api/v1/transactions/batch-delete', { transactionIds: ids }),
@@ -219,7 +227,6 @@ export const transactionAPI = {
     getPeriods: () => api.get('/api/v1/transactions/periods')
 };
 
-// ===== 设置 API =====
 export const settingsAPI = {
     getSettings: () => api.get('/api/v1/settings'),
     updateSettings: (data) => api.put('/api/v1/settings', data),
@@ -230,7 +237,6 @@ export const settingsAPI = {
     clearCache: () => api.post('/api/v1/settings/clear-cache')
 };
 
-// ===== 看板 API =====
 export const dashboardAPI = {
     getDashboard: () => api.get('/api/v1/dashboard'),
     getVATTrend: (params) => api.get('/api/v1/dashboard/vat-trend', { params }),
@@ -239,7 +245,6 @@ export const dashboardAPI = {
     getSystemOverview: () => api.get('/api/v1/dashboard/system-overview')
 };
 
-// ===== Webhook API =====
 export const webhookAPI = {
     getWebhooks: () => api.get('/api/v1/webhooks'),
     createWebhook: (data) => api.post('/api/v1/webhooks', data),
@@ -250,7 +255,6 @@ export const webhookAPI = {
     triggerWebhook: (id, event, data) => api.post(`/api/v1/webhooks/${id}/trigger`, { event, data })
 };
 
-// ===== 工具函数 =====
 export const downloadBlob = (blob, filename) => {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
