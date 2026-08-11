@@ -21,7 +21,6 @@ function Login() {
             console.log('📥 登录响应:', data);
 
             if (data.success) {
-                // ===== 正确存储为 JSON 字符串 =====
                 localStorage.setItem('token', data.data.token || 'dummy-token');
                 localStorage.setItem('user', JSON.stringify(data.data.user));
                 window.location.href = '/dashboard';
@@ -77,9 +76,10 @@ function Login() {
                 </button>
             </form>
 
-            <p style={{ textAlign: 'center', marginTop: 15, fontSize: 12, color: '#999' }}>
+            {/* ===== 删除演示账号文字 ===== */}
+            {/* <p style={{ textAlign: 'center', marginTop: 15, fontSize: 12, color: '#999' }}>
                 演示账号: admin@vatflow.com / admin123
-            </p>
+            </p> */}
         </div>
     );
 }

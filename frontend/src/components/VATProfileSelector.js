@@ -27,6 +27,59 @@ import {
     Close as CloseIcon
 } from '@mui/icons-material';
 
+// ===== 完整国家列表 =====
+const ALL_COUNTRIES = [
+    // 欧洲
+    { code: 'GB', name: '英国', flag: '🇬🇧' },
+    { code: 'FR', name: '法国', flag: '🇫🇷' },
+    { code: 'DE', name: '德国', flag: '🇩🇪' },
+    { code: 'IT', name: '意大利', flag: '🇮🇹' },
+    { code: 'ES', name: '西班牙', flag: '🇪🇸' },
+    { code: 'NL', name: '荷兰', flag: '🇳🇱' },
+    { code: 'BE', name: '比利时', flag: '🇧🇪' },
+    { code: 'AT', name: '奥地利', flag: '🇦🇹' },
+    { code: 'PL', name: '波兰', flag: '🇵🇱' },
+    { code: 'SE', name: '瑞典', flag: '🇸🇪' },
+    { code: 'DK', name: '丹麦', flag: '🇩🇰' },
+    { code: 'FI', name: '芬兰', flag: '🇫🇮' },
+    { code: 'IE', name: '爱尔兰', flag: '🇮🇪' },
+    { code: 'PT', name: '葡萄牙', flag: '🇵🇹' },
+    { code: 'NO', name: '挪威', flag: '🇳🇴' },
+    { code: 'CH', name: '瑞士', flag: '🇨🇭' },
+    { code: 'RU', name: '俄罗斯', flag: '🇷🇺' },
+    // 亚洲
+    { code: 'JP', name: '日本', flag: '🇯🇵' },
+    { code: 'CN', name: '中国', flag: '🇨🇳' },
+    { code: 'KR', name: '韩国', flag: '🇰🇷' },
+    { code: 'SG', name: '新加坡', flag: '🇸🇬' },
+    { code: 'MY', name: '马来西亚', flag: '🇲🇾' },
+    { code: 'TH', name: '泰国', flag: '🇹🇭' },
+    { code: 'VN', name: '越南', flag: '🇻🇳' },
+    { code: 'IN', name: '印度', flag: '🇮🇳' },
+    { code: 'ID', name: '印度尼西亚', flag: '🇮🇩' },
+    { code: 'PH', name: '菲律宾', flag: '🇵🇭' },
+    { code: 'HK', name: '香港', flag: '🇭🇰' },
+    { code: 'TW', name: '台湾', flag: '🇹🇼' },
+    // 美洲
+    { code: 'US', name: '美国', flag: '🇺🇸' },
+    { code: 'CA', name: '加拿大', flag: '🇨🇦' },
+    { code: 'MX', name: '墨西哥', flag: '🇲🇽' },
+    { code: 'BR', name: '巴西', flag: '🇧🇷' },
+    { code: 'AR', name: '阿根廷', flag: '🇦🇷' },
+    // 大洋洲
+    { code: 'AU', name: '澳大利亚', flag: '🇦🇺' },
+    { code: 'NZ', name: '新西兰', flag: '🇳🇿' },
+    // 非洲
+    { code: 'ZA', name: '南非', flag: '🇿🇦' },
+    { code: 'NG', name: '尼日利亚', flag: '🇳🇬' },
+    { code: 'EG', name: '埃及', flag: '🇪🇬' },
+    // 中东
+    { code: 'AE', name: '阿联酋', flag: '🇦🇪' },
+    { code: 'SA', name: '沙特阿拉伯', flag: '🇸🇦' },
+    { code: 'IL', name: '以色列', flag: '🇮🇱' },
+    { code: 'TR', name: '土耳其', flag: '🇹🇷' },
+];
+
 function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档案', size = 'small' }) {
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -42,7 +95,13 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
     const loadProfiles = async () => {
         setLoading(true);
         try {
-            const response = await fetch('/api/v1/vat-profiles');
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/v1/vat-profiles', {
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : '',
+                    'Content-Type': 'application/json'
+                }
+            });
             const result = await response.json();
             console.log('📥 VAT档案列表:', result);
             if (result.success) {
@@ -72,9 +131,13 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
         }
 
         try {
+            const token = localStorage.getItem('token');
             const response = await fetch('/api/v1/vat-profiles', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : '',
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({
                     vatNumber: newProfile.vatNumber,
                     country: newProfile.country,
@@ -106,6 +169,12 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
 
     const selectedProfile = profiles.find(p => p.id === value);
 
+    // 获取国家名称
+    const getCountryName = (code) => {
+        const country = ALL_COUNTRIES.find(c => c.code === code);
+        return country ? `${country.flag} ${country.name}` : code;
+    };
+
     return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <FormControl size={size} sx={{ minWidth: 220 }}>
@@ -125,7 +194,7 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
                         if (!profile) return <span>请选择VAT档案</span>;
                         return (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Chip label={profile.country} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                <Chip label={getCountryName(profile.country)} size="small" variant="outlined" sx={{ minWidth: 32 }} />
                                 <span>{profile.vat_number}</span>
                                 {profile.is_default && (
                                     <Chip label="默认" size="small" color="primary" sx={{ height: 20, fontSize: '0.6rem' }} />
@@ -140,7 +209,7 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
                         profiles.map((profile) => (
                             <MenuItem key={profile.id} value={profile.id}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                                    <Chip label={profile.country} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                    <Chip label={getCountryName(profile.country)} size="small" variant="outlined" sx={{ minWidth: 32 }} />
                                     <span style={{ flex: 1 }}>{profile.vat_number}</span>
                                     {profile.is_default && <Chip label="默认" size="small" color="primary" />}
                                     {profile.company_name && (
@@ -168,7 +237,7 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
             {selectedProfile && (
                 <Chip
                     icon={<CheckCircleIcon />}
-                    label={`${selectedProfile.country} ${selectedProfile.vat_number}`}
+                    label={`${getCountryName(selectedProfile.country)} ${selectedProfile.vat_number}`}
                     size="small"
                     color="success"
                     variant="outlined"
@@ -205,21 +274,21 @@ function VATProfileSelector({ value, onChange, onProfileChange, label = 'VAT档�
                             value={newProfile.country}
                             onChange={(e) => setNewProfile({ ...newProfile, country: e.target.value })}
                             fullWidth
+                            SelectProps={{
+                                MenuProps: {
+                                    PaperProps: {
+                                        style: {
+                                            maxHeight: 300,
+                                        },
+                                    },
+                                },
+                            }}
                         >
-                            <MenuItem value="GB">🇬🇧 英国</MenuItem>
-                            <MenuItem value="FR">🇫🇷 法国</MenuItem>
-                            <MenuItem value="DE">🇩🇪 德国</MenuItem>
-                            <MenuItem value="IT">🇮🇹 意大利</MenuItem>
-                            <MenuItem value="ES">🇪🇸 西班牙</MenuItem>
-                            <MenuItem value="NL">🇳🇱 荷兰</MenuItem>
-                            <MenuItem value="BE">🇧🇪 比利时</MenuItem>
-                            <MenuItem value="AT">🇦🇹 奥地利</MenuItem>
-                            <MenuItem value="PL">🇵🇱 波兰</MenuItem>
-                            <MenuItem value="SE">🇸🇪 瑞典</MenuItem>
-                            <MenuItem value="DK">🇩🇰 丹麦</MenuItem>
-                            <MenuItem value="FI">🇫🇮 芬兰</MenuItem>
-                            <MenuItem value="IE">🇮🇪 爱尔兰</MenuItem>
-                            <MenuItem value="PT">🇵🇹 葡萄牙</MenuItem>
+                            {ALL_COUNTRIES.map((country) => (
+                                <MenuItem key={country.code} value={country.code}>
+                                    {country.flag} {country.name} ({country.code})
+                                </MenuItem>
+                            ))}
                         </TextField>
                         <TextField
                             label="公司名称"

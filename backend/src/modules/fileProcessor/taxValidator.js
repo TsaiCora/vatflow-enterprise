@@ -3,10 +3,152 @@
 /**
  * 税务数据校验器
  * 支持多国进口VAT与销售VAT的校验和比对
+ * 自动从 tax/ 目录加载所有国家配置
  */
+
+const fs = require('fs');
+const path = require('path');
+const { logger } = require('../../utils/logger');
+
 class TaxValidator {
     constructor() {
-        this.countryConfigs = {
+        // ===== 从 tax 目录动态加载所有国家配置 =====
+        this.countryConfigs = this._loadCountryConfigs();
+        this.taxCalculators = this._loadTaxCalculators();
+        
+        logger.info(`✅ 税务校验器已加载 ${Object.keys(this.countryConfigs).length} 个国家配置`);
+    }
+
+    /**
+     * 从 tax 目录加载所有国家配置
+     */
+    _loadCountryConfigs() {
+        const configs = {};
+        const taxDir = path.join(__dirname, 'tax');
+        
+        try {
+            const files = fs.readdirSync(taxDir);
+            
+            for (const file of files) {
+                // 匹配 *_tax.js 文件
+                if (file.endsWith('_tax.js') && file !== 'index.js') {
+                    try {
+                        const module = require(path.join(taxDir, file));
+                        const countryCode = module.countryCode || file.replace('_tax.js', '').toUpperCase();
+                        
+                        // 提取税率
+                        let vatRate = 0;
+                        if (module.VAT_RATES && module.VAT_RATES.STANDARD !== undefined) {
+                            vatRate = module.VAT_RATES.STANDARD;
+                        } else if (module.GST_RATES && module.GST_RATES.STANDARD !== undefined) {
+                            vatRate = module.GST_RATES.STANDARD;
+                        } else if (module.IVA_RATES && module.IVA_RATES.STANDARD !== undefined) {
+                            vatRate = module.IVA_RATES.STANDARD;
+                        } else if (module.ICMS_RATES && module.ICMS_RATES.STANDARD !== undefined) {
+                            vatRate = module.ICMS_RATES.STANDARD;
+                        } else if (module.SST_RATES && module.SST_RATES.STANDARD !== undefined) {
+                            vatRate = module.SST_RATES.STANDARD;
+                        }
+
+                        configs[countryCode] = {
+                            vatRate: vatRate,
+                            currency: module.currency || 'EUR',
+                            name: module.countryName || countryCode,
+                            type: this._getTaxType(countryCode),
+                            taxSystem: module.taxSystem || 'VAT'
+                        };
+                        
+                        logger.debug(`   → 加载国家: ${countryCode} (${module.countryName}) 税率: ${vatRate}%`);
+                    } catch (err) {
+                        logger.warn(`⚠️ 加载税务文件失败: ${file}`, err.message);
+                    }
+                }
+            }
+        } catch (err) {
+            logger.error('❌ 加载税务配置失败:', err.message);
+            // 降级到默认配置
+            return this._getDefaultConfigs();
+        }
+
+        return configs;
+    }
+
+    /**
+     * 加载税务计算器
+     */
+    _loadTaxCalculators() {
+        const calculators = {};
+        const taxDir = path.join(__dirname, 'tax');
+        
+        try {
+            const files = fs.readdirSync(taxDir);
+            for (const file of files) {
+                if (file.endsWith('_tax.js') && file !== 'index.js') {
+                    try {
+                        const module = require(path.join(taxDir, file));
+                        const countryCode = module.countryCode || file.replace('_tax.js', '').toUpperCase();
+                        calculators[countryCode] = module;
+                    } catch (err) {
+                        // 忽略加载失败
+                    }
+                }
+            }
+        } catch (err) {
+            // 忽略
+        }
+        
+        return calculators;
+    }
+
+    /**
+     * 获取税务类型
+     */
+    _getTaxType(countryCode) {
+        const types = {
+            'GB': 'standard',
+            'DE': 'standard',
+            'FR': 'standard',
+            'IT': 'standard',
+            'ES': 'standard',
+            'NL': 'standard',
+            'BE': 'standard',
+            'PL': 'standard',
+            'SE': 'standard',
+            'DK': 'standard',
+            'FI': 'standard',
+            'IE': 'standard',
+            'PT': 'standard',
+            'AT': 'standard',
+            'NO': 'standard',
+            'CH': 'standard',
+            'JP': 'standard',
+            'KR': 'standard',
+            'SG': 'gst',
+            'AU': 'gst',
+            'NZ': 'gst',
+            'CA': 'gst',
+            'US': 'no_vat',
+            'MX': 'iva',
+            'BR': 'icms',
+            'IN': 'gst',
+            'MY': 'sst',
+            'TH': 'standard',
+            'VN': 'standard',
+            'ID': 'standard',
+            'PH': 'standard',
+            'ZA': 'standard',
+            'TR': 'standard',
+            'AE': 'standard',
+            'RU': 'standard'
+        };
+        return types[countryCode] || 'standard';
+    }
+
+    /**
+     * 默认配置（降级方案）
+     */
+    _getDefaultConfigs() {
+        return {
             GB: { vatRate: 20, currency: 'GBP', name: '英国', type: 'standard' },
             DE: { vatRate: 19, currency: 'EUR', name: '德国', type: 'standard' },
             FR: { vatRate: 20, currency: 'EUR', name: '法国', type: 'standard' },
@@ -20,8 +162,22 @@ class TaxValidator {
             US: { vatRate: 0, currency: 'USD', name: '美国', type: 'no_vat' },
             CA: { vatRate: 5, currency: 'CAD', name: '加拿大', type: 'gst' },
             AU: { vatRate: 10, currency: 'AUD', name: '澳大利亚', type: 'gst' },
-            SG: { vatRate: 7, currency: 'SGD', name: '新加坡', type: 'gst' }
+            SG: { vatRate: 9, currency: 'SGD', name: '新加坡', type: 'gst' }
         };
+    }
+
+    /**
+     * 获取国家配置
+     */
+    getCountryConfig(countryCode) {
+        return this.countryConfigs[countryCode.toUpperCase()] || null;
+    }
+
+    /**
+     * 获取所有支持的国家
+     */
+    getSupportedCountries() {
+        return Object.keys(this.countryConfigs);
     }
 
     /**
@@ -71,19 +227,17 @@ class TaxValidator {
         }
 
         for (const item of data) {
-            // 检查 VAT 号
             const country = item.country || 'GB';
-            const config = this.countryConfigs[country];
+            const config = this.getCountryConfig(country);
+            
             if (!item.vatNumber && config && config.type !== 'no_vat') {
                 results.warnings.push(`[${country}] VAT 号缺失`);
             }
 
-            // 检查进口 VAT 金额
             if (item.totalImportVat <= 0 && config && config.type !== 'no_vat') {
                 results.warnings.push(`[${country}] 进口 VAT 金额为 0 或负数`);
             }
 
-            // 检查期间
             if (!item.period || !this._isValidPeriod(item.period)) {
                 results.warnings.push(`[${country}] 期间格式不正确: ${item.period}`);
             }
@@ -113,13 +267,12 @@ class TaxValidator {
      * 3. 校验数据一致性
      */
     _validateConsistency(importData, salesData, results) {
-        // 按国家分别计算
         const countries = new Set();
         importData.forEach(item => countries.add(item.country || 'GB'));
         salesData.forEach(item => countries.add(item.country || 'GB'));
 
         for (const country of countries) {
-            const config = this.countryConfigs[country];
+            const config = this.getCountryConfig(country);
             if (!config) continue;
 
             const importVat = importData
@@ -154,7 +307,7 @@ class TaxValidator {
         for (const item of salesData) {
             if (!item.totalAmount || !item.vatAmount) continue;
             const country = item.country || 'GB';
-            const config = this.countryConfigs[country];
+            const config = this.getCountryConfig(country);
             if (!config || config.type === 'no_vat') continue;
 
             const rate = config.vatRate / 100;
@@ -175,13 +328,12 @@ class TaxValidator {
     _summarizeByCountry(importData, salesData) {
         const countries = {};
 
-        // 合并所有国家
         const allCountries = new Set();
         importData.forEach(item => allCountries.add(item.country || 'GB'));
         salesData.forEach(item => allCountries.add(item.country || 'GB'));
 
         for (const country of allCountries) {
-            const config = this.countryConfigs[country];
+            const config = this.getCountryConfig(country);
             const importItems = importData.filter(item => (item.country || 'GB') === country);
             const salesItems = salesData.filter(item => (item.country || 'GB') === country);
 
@@ -233,6 +385,90 @@ class TaxValidator {
      */
     _isValidPeriod(period) {
         return /^\d{4}-\d{2}$/.test(period);
+    }
+
+    /**
+     * 计算指定国家的VAT
+     */
+    calculateVAT(countryCode, amount, rate) {
+        const config = this.getCountryConfig(countryCode);
+        if (!config) {
+            throw new Error(`不支持的国家: ${countryCode}`);
+        }
+        
+        const vatRate = rate || config.vatRate;
+        const vatAmount = (amount * vatRate) / 100;
+        
+        return {
+            netAmount: amount,
+            vatAmount: vatAmount,
+            grossAmount: amount + vatAmount,
+            rate: vatRate,
+            currency: config.currency,
+            country: countryCode,
+            countryName: config.name
+        };
+    }
+
+    /**
+     * 验证VAT号码格式
+     */
+    validateVATNumber(countryCode, vatNumber) {
+        const calculator = this.taxCalculators[countryCode.toUpperCase()];
+        if (calculator && calculator.validateVATNumber) {
+            return calculator.validateVATNumber(vatNumber);
+        }
+        
+        // 降级到基本格式验证
+        const config = this.getCountryConfig(countryCode);
+        if (!config) {
+            return { valid: false, message: `不支持的国家: ${countryCode}` };
+        }
+        
+        // 基础格式验证
+        const patterns = {
+            'GB': /^GB\d{9,12}$/,
+            'DE': /^DE\d{9}$/,
+            'FR': /^FR[A-Z0-9]{2}\d{9}$/,
+            'IT': /^IT\d{11}$/,
+            'ES': /^ES[A-Z0-9]\d{8}$/,
+            'NL': /^NL[A-Z0-9]{9}[A-Z]{1,2}$/,
+            'BE': /^BE\d{10}$/,
+            'PL': /^PL\d{10}$/,
+            'SE': /^SE\d{12}$/,
+            'DK': /^DK\d{8}$/,
+            'FI': /^FI\d{8}$/,
+            'IE': /^IE\d{7}[A-Z]{1,2}$/,
+            'PT': /^PT\d{9}$/,
+            'AT': /^ATU\d{8}$/,
+            'JP': /^[A-Z0-9]{12,13}$/,
+            'SG': /^[A-Z]\d{8}[A-Z]$/,
+            'AU': /^\d{11}$/,
+            'CA': /^[A-Z0-9]{9}$/,
+            'KR': /^[0-9]{10}$/,
+            'MX': /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
+            'BR': /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/,
+            'IN': /^\d{2}[A-Z]{5}\d{4}[A-Z]{1}\d{1}[A-Z]{1}\d{1}$/,
+            'ZA': /^\d{10}$/,
+            'TR': /^TR\d{10}$/,
+            'AE': /^AE\d{15}$/,
+            'NZ': /^NZ\d{8,9}$/,
+            'MY': /^[A-Z]{2}\d{8}$/,
+            'TH': /^\d{13}$/,
+            'VN': /^\d{10}$/,
+            'ID': /^\d{15}$/,
+            'PH': /^\d{12}$/,
+            'RU': /^\d{10}$/,
+            'NO': /^NO\d{9}$/,
+            'CH': /^CHE-?\d{3}\.\d{3}\.\d{3}$/
+        };
+        
+        const pattern = patterns[countryCode.toUpperCase()];
+        if (pattern && pattern.test(vatNumber)) {
+            return { valid: true, message: 'VAT 号码格式有效' };
+        }
+        
+        return { valid: false, message: 'VAT 号码格式无效' };
     }
 }
 

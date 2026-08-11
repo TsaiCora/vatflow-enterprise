@@ -33,22 +33,41 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// 响应拦截器
+// ===== 响应拦截器 - 优化版 =====
 api.interceptors.response.use(
     (response) => response.data,
     (error) => {
         if (error.response) {
+            // 401 未授权 - 不要立即跳转，让调用方处理
             if (error.response.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/login';
+                const currentPath = window.location.pathname;
+                // 只有在登录页之外才清除 token
+                if (currentPath !== '/login') {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    // 不自动跳转，返回错误让调用方处理
+                }
+                return Promise.reject({
+                    status: 401,
+                    message: '登录已过期，请重新登录'
+                });
             }
-            return Promise.reject(error.response.data?.error || error.response.data?.message || '请求失败');
+            return Promise.reject({
+                status: error.response.status,
+                message: error.response.data?.error || error.response.data?.message || '请求失败',
+                data: error.response.data
+            });
         }
         if (error.request) {
-            return Promise.reject('网络连接失败，请检查网络');
+            return Promise.reject({
+                status: 0,
+                message: '网络连接失败，请检查网络'
+            });
         }
-        return Promise.reject(error.message || '请求失败');
+        return Promise.reject({
+            status: 0,
+            message: error.message || '请求失败'
+        });
     }
 );
 
