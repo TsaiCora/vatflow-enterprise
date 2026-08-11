@@ -19,13 +19,85 @@ import {
     Receipt as ReceiptIcon,
     Assessment as AssessmentIcon,
     CheckCircle as CheckCircleIcon,
-    Refresh as RefreshIcon
+    Refresh as RefreshIcon,
+    Language as LanguageIcon,
+    Storefront as StorefrontIcon
 } from '@mui/icons-material';
 import { dashboardAPI } from '../services/api';
 
+// ===== 完整国家列表（43个）=====
+const COUNTRIES = [
+    { code: 'GB', name: '英国', flag: '🇬🇧' },
+    { code: 'FR', name: '法国', flag: '🇫🇷' },
+    { code: 'DE', name: '德国', flag: '🇩🇪' },
+    { code: 'IT', name: '意大利', flag: '🇮🇹' },
+    { code: 'ES', name: '西班牙', flag: '🇪🇸' },
+    { code: 'NL', name: '荷兰', flag: '🇳🇱' },
+    { code: 'BE', name: '比利时', flag: '🇧🇪' },
+    { code: 'AT', name: '奥地利', flag: '🇦🇹' },
+    { code: 'PL', name: '波兰', flag: '🇵🇱' },
+    { code: 'SE', name: '瑞典', flag: '🇸🇪' },
+    { code: 'DK', name: '丹麦', flag: '🇩🇰' },
+    { code: 'FI', name: '芬兰', flag: '🇫🇮' },
+    { code: 'IE', name: '爱尔兰', flag: '🇮🇪' },
+    { code: 'PT', name: '葡萄牙', flag: '🇵🇹' },
+    { code: 'NO', name: '挪威', flag: '🇳🇴' },
+    { code: 'CH', name: '瑞士', flag: '🇨🇭' },
+    { code: 'RU', name: '俄罗斯', flag: '🇷🇺' },
+    { code: 'JP', name: '日本', flag: '🇯🇵' },
+    { code: 'CN', name: '中国', flag: '🇨🇳' },
+    { code: 'KR', name: '韩国', flag: '🇰🇷' },
+    { code: 'SG', name: '新加坡', flag: '🇸🇬' },
+    { code: 'MY', name: '马来西亚', flag: '🇲🇾' },
+    { code: 'TH', name: '泰国', flag: '🇹🇭' },
+    { code: 'VN', name: '越南', flag: '🇻🇳' },
+    { code: 'ID', name: '印度尼西亚', flag: '🇮🇩' },
+    { code: 'PH', name: '菲律宾', flag: '🇵🇭' },
+    { code: 'IN', name: '印度', flag: '🇮🇳' },
+    { code: 'HK', name: '香港', flag: '🇭🇰' },
+    { code: 'TW', name: '台湾', flag: '🇹🇼' },
+    { code: 'US', name: '美国', flag: '🇺🇸' },
+    { code: 'CA', name: '加拿大', flag: '🇨🇦' },
+    { code: 'MX', name: '墨西哥', flag: '🇲🇽' },
+    { code: 'BR', name: '巴西', flag: '🇧🇷' },
+    { code: 'AR', name: '阿根廷', flag: '🇦🇷' },
+    { code: 'AU', name: '澳大利亚', flag: '🇦🇺' },
+    { code: 'NZ', name: '新西兰', flag: '🇳🇿' },
+    { code: 'ZA', name: '南非', flag: '🇿🇦' },
+    { code: 'NG', name: '尼日利亚', flag: '🇳🇬' },
+    { code: 'EG', name: '埃及', flag: '🇪🇬' },
+    { code: 'AE', name: '阿联酋', flag: '🇦🇪' },
+    { code: 'SA', name: '沙特阿拉伯', flag: '🇸🇦' },
+    { code: 'IL', name: '以色列', flag: '🇮🇱' },
+    { code: 'TR', name: '土耳其', flag: '🇹🇷' },
+];
+
+// ===== 完整平台列表（21个）=====
+const PLATFORMS = [
+    { id: 'amazon', name: 'Amazon', icon: '🛒' },
+    { id: 'ebay', name: 'eBay', icon: '📦' },
+    { id: 'aliexpress', name: 'AliExpress', icon: '🌐' },
+    { id: 'allegro', name: 'Allegro', icon: '🛍️' },
+    { id: 'shopify', name: 'Shopify', icon: '🛍️' },
+    { id: 'etsy', name: 'Etsy', icon: '🎨' },
+    { id: 'walmart', name: 'Walmart', icon: '🏪' },
+    { id: 'target', name: 'Target', icon: '🎯' },
+    { id: 'zalando', name: 'Zalando', icon: '👗' },
+    { id: 'lazada', name: 'Lazada', icon: '🛒' },
+    { id: 'shopee', name: 'Shopee', icon: '🏷️' },
+    { id: 'temu', name: 'Temu', icon: '🛍️' },
+    { id: 'shein', name: 'SHEIN', icon: '👚' },
+    { id: 'tiktok', name: 'TikTok Shop', icon: '🎵' },
+    { id: 'depop', name: 'Depop', icon: '👕' },
+    { id: 'mercari', name: 'Mercari', icon: '🛍️' },
+    { id: 'poshmark', name: 'Poshmark', icon: '👗' },
+    { id: 'rakuten', name: 'Rakuten', icon: '🛒' },
+    { id: 'wish', name: 'Wish', icon: '🎁' },
+    { id: 'yahoo', name: 'Yahoo Shopping', icon: '🔍' },
+    { id: 'pva', name: 'PVA', icon: '📋' },
+];
+
 function Dashboard() {
-    console.log('📊 Dashboard 组件已渲染');
-    
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState({
         totalTenants: 0,
@@ -38,54 +110,68 @@ function Dashboard() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        console.log('🚀 Dashboard 组件已挂载 - 版本 2026-08-10');
         loadData();
     }, []);
 
     const loadData = async () => {
-        console.log('🔄 开始加载 Dashboard 数据...');
         setLoading(true);
         setError(null);
-        
         try {
-            console.log('📡 调用 dashboardAPI.getDashboard()...');
             const result = await dashboardAPI.getDashboard();
-            console.log('📊 API 返回原始数据:', result);
+            console.log('📊 Dashboard 原始数据:', result);
             
             if (result && result.success) {
                 const rawData = result.data || {};
-                console.log('📦 rawData:', rawData);
-                console.log('📦 rawData.totalTenants:', rawData.totalTenants);
-                
-                const mappedData = {
+                setData({
                     totalTenants: rawData.totalTenants || 0,
                     totalFilings: rawData.totalFilings || 0,
                     totalTransactions: rawData.totalTransactions || 0,
                     recentActivities: rawData.recentActivities || [],
                     vatTrend: rawData.vatTrend || [],
                     countryDistribution: rawData.countryDistribution || {}
-                };
-                
-                console.log('✅ 映射后的数据:', mappedData);
-                setData(mappedData);
+                });
             } else {
-                console.error('❌ API 返回失败:', result);
                 setError(result?.error || '加载失败');
             }
         } catch (err) {
-            console.error('❌ 加载异常:', err);
-            setError('网络错误，请检查后端服务');
+            console.error('❌ 加载失败:', err);
+            setError('网络错误，请检查后端');
         } finally {
             setLoading(false);
-            console.log('🏁 加载完成');
         }
     };
 
-    // 统计卡片配置
+    if (loading) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <LinearProgress />
+                <Typography sx={{ mt: 2, textAlign: 'center' }}>加载中...</Typography>
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <Alert severity="error" sx={{ mt: 2 }}>
+                    {error}
+                </Alert>
+                <Button
+                    variant="contained"
+                    startIcon={<RefreshIcon />}
+                    onClick={loadData}
+                    sx={{ mt: 2 }}
+                >
+                    重试
+                </Button>
+            </Box>
+        );
+    }
+
     const stats = [
         {
             title: '租户总数',
-            value: data.totalTenants,
+            value: data?.totalTenants || 0,
             icon: <PeopleIcon sx={{ fontSize: 32, color: '#1976d2' }} />,
             color: '#e3f2fd',
             bgColor: '#1976d2',
@@ -93,7 +179,7 @@ function Dashboard() {
         },
         {
             title: '申报总数',
-            value: data.totalFilings,
+            value: data?.totalFilings || 0,
             icon: <AssessmentIcon sx={{ fontSize: 32, color: '#2e7d32' }} />,
             color: '#e8f5e9',
             bgColor: '#2e7d32',
@@ -101,7 +187,7 @@ function Dashboard() {
         },
         {
             title: '交易总数',
-            value: data.totalTransactions,
+            value: data?.totalTransactions || 0,
             icon: <ReceiptIcon sx={{ fontSize: 32, color: '#ed6c02' }} />,
             color: '#fff3e0',
             bgColor: '#ed6c02',
@@ -117,50 +203,18 @@ function Dashboard() {
         }
     ];
 
-    if (loading) {
-        return (
-            <Box sx={{ p: 3 }}>
-                <LinearProgress />
-                <Typography sx={{ mt: 2, textAlign: 'center' }}>加载数据中...</Typography>
-            </Box>
-        );
-    }
-
-    if (error) {
-        return (
-            <Box sx={{ p: 3 }}>
-                <Alert severity="error" sx={{ mb: 2 }}>
-                    {error}
-                </Alert>
-                <Button
-                    variant="contained"
-                    startIcon={<RefreshIcon />}
-                    onClick={loadData}
-                >
-                    重试
-                </Button>
-            </Box>
-        );
-    }
-
     return (
         <Box sx={{ p: 3 }}>
-            {/* 页面标题 */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     📊 概览看板
                 </Typography>
                 <Chip 
-                    label={`数据更新时间: ${new Date().toLocaleString()}`} 
+                    label={`更新于 ${new Date().toLocaleString()}`} 
                     size="small" 
                     variant="outlined" 
                 />
             </Box>
-
-            {/* 调试信息 - 显示数据状态 */}
-            <Alert severity="info" sx={{ mb: 2 }}>
-                数据状态: 租户 {data.totalTenants} 个, 申报 {data.totalFilings} 个, 交易 {data.totalTransactions} 个
-            </Alert>
 
             {/* 统计卡片 */}
             <Grid container spacing={3}>
@@ -199,15 +253,63 @@ function Dashboard() {
                 ))}
             </Grid>
 
-            {/* 详细信息 */}
+            {/* 支持的国家和平台 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
-                {/* 最近活动 */}
                 <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 3, borderRadius: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <LanguageIcon color="primary" />
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                支持的国家
+                            </Typography>
+                            <Chip label={`${COUNTRIES.length} 个`} size="small" color="primary" />
+                        </Box>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {COUNTRIES.map((country) => (
+                                <Chip
+                                    key={country.code}
+                                    label={`${country.flag} ${country.name}`}
+                                    variant="outlined"
+                                    size="small"
+                                    sx={{ borderRadius: 1 }}
+                                />
+                            ))}
+                        </Box>
+                    </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 3, borderRadius: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <StorefrontIcon color="primary" />
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                支持的平台
+                            </Typography>
+                            <Chip label={`${PLATFORMS.length} 个`} size="small" color="primary" />
+                        </Box>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {PLATFORMS.map((platform) => (
+                                <Chip
+                                    key={platform.id}
+                                    label={`${platform.icon} ${platform.name}`}
+                                    variant="outlined"
+                                    size="small"
+                                    sx={{ borderRadius: 1 }}
+                                />
+                            ))}
+                        </Box>
+                    </Paper>
+                </Grid>
+            </Grid>
+
+            {/* 最近活动 */}
+            <Grid container spacing={3} sx={{ mt: 1 }}>
+                <Grid item xs={12}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
                             📋 最近活动
                         </Typography>
-                        {data.recentActivities && data.recentActivities.length > 0 ? (
+                        {data?.recentActivities && data.recentActivities.length > 0 ? (
                             data.recentActivities.map((activity, index) => (
                                 <Box key={index}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
@@ -224,39 +326,6 @@ function Dashboard() {
                         ) : (
                             <Typography color="text.secondary">暂无最近活动</Typography>
                         )}
-                    </Paper>
-                </Grid>
-
-                {/* 系统信息 */}
-                <Grid item xs={12} md={6}>
-                    <Paper sx={{ p: 3, borderRadius: 2 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                            ℹ️ 系统信息
-                        </Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                            <Typography color="text.secondary">版本</Typography>
-                            <Typography variant="body2">VATFlow v3.0.1</Typography>
-                        </Box>
-                        <Divider />
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                            <Typography color="text.secondary">数据库</Typography>
-                            <Typography variant="body2">Cloudflare D1</Typography>
-                        </Box>
-                        <Divider />
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                            <Typography color="text.secondary">后端</Typography>
-                            <Typography variant="body2">Cloudflare Workers</Typography>
-                        </Box>
-                        <Divider />
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                            <Typography color="text.secondary">前端</Typography>
-                            <Typography variant="body2">React + Cloudflare Pages</Typography>
-                        </Box>
-                        <Divider />
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                            <Typography color="text.secondary">租户总数</Typography>
-                            <Typography variant="body2" fontWeight="bold">{data.totalTenants}</Typography>
-                        </Box>
                     </Paper>
                 </Grid>
             </Grid>
