@@ -28,42 +28,73 @@ api.interceptors.request.use(
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+        console.log('📤 API 请求:', config.method.toUpperCase(), config.url, config.data || '');
         return config;
     },
-    (error) => Promise.reject(error)
+    (error) => {
+        console.error('❌ 请求拦截器错误:', error);
+        return Promise.reject(error);
+    }
 );
 
-// ===== 响应拦截器 - 优化版 =====
+// ===== 响应拦截器 - 修复版 =====
 api.interceptors.response.use(
-    (response) => response.data,
+    (response) => {
+        console.log('📥 API 响应:', response.config.url, response.status);
+        return response.data;
+    },
     (error) => {
+        console.error('❌ API 响应错误:', error);
+        
         if (error.response) {
-            // 401 未授权 - 不要立即跳转，让调用方处理
+            // 401 未授权
             if (error.response.status === 401) {
                 const currentPath = window.location.pathname;
-                // 只有在登录页之外才清除 token
-                if (currentPath !== '/login') {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                    // 不自动跳转，返回错误让调用方处理
+                const isLoginPage = currentPath === '/login';
+                const isLoginRequest = error.config?.url?.includes('/auth/login');
+                
+                // 清除无效 token
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                
+                // 如果是登录请求失败，不跳转
+                if (isLoginRequest) {
+                    return Promise.reject({
+                        status: 401,
+                        message: '用户名或密码错误'
+                    });
                 }
+                
+                // 如果不在登录页，延迟跳转
+                if (!isLoginPage) {
+                    // 显示错误信息后再跳转
+                    console.warn('🔒 登录已过期，即将跳转到登录页');
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                }
+                
                 return Promise.reject({
                     status: 401,
                     message: '登录已过期，请重新登录'
                 });
             }
+            
+            // 其他 HTTP 错误
             return Promise.reject({
                 status: error.response.status,
                 message: error.response.data?.error || error.response.data?.message || '请求失败',
                 data: error.response.data
             });
         }
+        
         if (error.request) {
             return Promise.reject({
                 status: 0,
                 message: '网络连接失败，请检查网络'
             });
         }
+        
         return Promise.reject({
             status: 0,
             message: error.message || '请求失败'

@@ -27,7 +27,7 @@ import {
 } from '@mui/icons-material';
 import { taxAPI } from '../services/api';
 
-// ===== 完整国家列表（与 VATProfileSelector 保持一致）=====
+// ===== 完整国家列表（43个国家）=====
 const ALL_COUNTRIES = [
     // 欧洲
     { code: 'GB', name: '英国', flag: '🇬🇧', taxRate: 20, currency: 'GBP' },
@@ -107,23 +107,19 @@ function TaxValidation() {
 
     const handleValidate = async () => {
         const token = localStorage.getItem('token');
+        console.log('🔑 当前Token:', token ? '存在' : '不存在');
+
         if (!token) {
-            setError('请先登录后再执行税务校验');
-            setSnackbar({
-                open: true,
-                message: '请先登录',
-                severity: 'warning'
-            });
+            const msg = '请先登录后再执行税务校验';
+            setError(msg);
+            setSnackbar({ open: true, message: msg, severity: 'warning' });
             return;
         }
 
         if (!formData.vatNumber) {
-            setError('请输入VAT号码');
-            setSnackbar({
-                open: true,
-                message: '请输入VAT号码',
-                severity: 'warning'
-            });
+            const msg = '请输入VAT号码';
+            setError(msg);
+            setSnackbar({ open: true, message: msg, severity: 'warning' });
             return;
         }
 
@@ -134,7 +130,6 @@ function TaxValidation() {
 
         try {
             console.log('📤 发送校验请求:', formData);
-            console.log('🔑 当前Token:', token ? '存在' : '不存在');
 
             const result = await taxAPI.validate(formData);
             console.log('✅ 税务校验结果:', result);
@@ -159,28 +154,31 @@ function TaxValidation() {
             }
         } catch (err) {
             console.error('❌ 校验失败:', err);
+            console.error('❌ 错误详情:', JSON.stringify(err, null, 2));
 
+            // 处理错误
+            let msg = '税务校验失败，请检查网络';
+            
             if (err && err.status === 401) {
-                const msg = '登录已过期，请重新登录';
-                setError(msg);
-                setSnackbar({
-                    open: true,
-                    message: msg,
-                    severity: 'error'
-                });
+                msg = '登录已过期，请重新登录';
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
+                setError(msg);
+                setSnackbar({ open: true, message: msg, severity: 'error' });
                 setTimeout(() => {
                     window.location.href = '/login';
                 }, 2500);
-            } else {
-                const msg = typeof err === 'string' ? err : (err?.message || '税务校验失败，请检查网络');
+            } else if (typeof err === 'string') {
+                msg = err;
                 setError(msg);
-                setSnackbar({
-                    open: true,
-                    message: msg,
-                    severity: 'error'
-                });
+                setSnackbar({ open: true, message: msg, severity: 'error' });
+            } else if (err && err.message) {
+                msg = err.message;
+                setError(msg);
+                setSnackbar({ open: true, message: msg, severity: 'error' });
+            } else {
+                setError(msg);
+                setSnackbar({ open: true, message: msg, severity: 'error' });
             }
         } finally {
             setLoading(false);
@@ -217,7 +215,6 @@ function TaxValidation() {
 
     return (
         <Box sx={{ p: 3 }}>
-            {/* 页面标题 */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     ✅ 税务校验
@@ -241,7 +238,6 @@ function TaxValidation() {
                 </Box>
             </Box>
 
-            {/* 错误提示 */}
             {error && (
                 <Alert
                     severity="error"
@@ -253,7 +249,6 @@ function TaxValidation() {
                 </Alert>
             )}
 
-            {/* 成功提示 */}
             {success && validationResult && (
                 <Alert
                     severity="success"
@@ -264,9 +259,7 @@ function TaxValidation() {
                 </Alert>
             )}
 
-            {/* 主要区域 */}
             <Grid container spacing={3}>
-                {/* 左侧 - 校验表单 */}
                 <Grid item xs={12} md={6}>
                     <Card>
                         <CardContent>
@@ -326,7 +319,6 @@ function TaxValidation() {
                     </Card>
                 </Grid>
 
-                {/* 右侧 - 校验结果 */}
                 <Grid item xs={12} md={6}>
                     <Card sx={{ height: '100%' }}>
                         <CardContent>
@@ -397,7 +389,6 @@ function TaxValidation() {
                 </Grid>
             </Grid>
 
-            {/* Snackbar 通知 */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}
