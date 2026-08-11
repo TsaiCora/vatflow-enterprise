@@ -40,6 +40,41 @@ const COUNTRY_NAME_MAP = {
 };
 
 // =============================================
+// ===== 租户中间件 =====
+// =============================================
+app.use('*', async (c, next) => {
+    const path = c.req.path;
+    
+    // 跳过登录和健康检查接口
+    if (path === '/api/v1/auth/login' || path === '/health' || path === '/') {
+        return next();
+    }
+
+    // 获取租户ID（从Header或Query参数）
+    const tenantId = c.req.header('X-Tenant-ID') || c.req.query('tenantId');
+    
+    if (!tenantId) {
+        // 对于需要租户ID的接口，返回错误
+        if (path.startsWith('/api/v1/')) {
+            return c.json({ error: '缺少租户ID，请重新登录' }, 400);
+        }
+        return next();
+    }
+
+    // 存储租户ID到上下文
+    c.set('tenantId', tenantId);
+    
+    return next();
+});
+
+// =============================================
+// ===== 获取租户ID的工具函数 =====
+// =============================================
+const getTenantId = (c) => {
+    return c.get('tenantId') || c.req.header('X-Tenant-ID') || c.req.query('tenantId');
+};
+
+// =============================================
 // ===== 健康检查 =====
 // =============================================
 app.get('/health', (c) => {
@@ -166,9 +201,16 @@ app.get('/api/v1/platforms', async (c) => {
 // =============================================
 app.get('/api/v1/tenants', async (c) => {
     try {
-        const { results } = await c.env.DB.prepare(
-            'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants'
-        ).all()
+        const tenantId = getTenantId(c);
+        let query = 'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants';
+        const params = [];
+        
+        if (tenantId) {
+            query += ' WHERE tenant_id = ?';
+            params.push(tenantId);
+        }
+        
+        const { results } = await c.env.DB.prepare(query).bind(...params).all()
         return c.json({
             success: true,
             data: results,
@@ -182,6 +224,13 @@ app.get('/api/v1/tenants', async (c) => {
 app.get('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id')
+        const tenantId = getTenantId(c);
+        
+        // 只能查询自己的租户信息
+        if (tenantId && id !== tenantId) {
+            return c.json({ error: '无权访问其他租户数据' }, 403)
+        }
+        
         const result = await c.env.DB.prepare(
             'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants WHERE tenant_id = ?'
         ).bind(id).first()
@@ -215,6 +264,12 @@ app.post('/api/v1/tenants', async (c) => {
 app.put('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id')
+        const tenantId = getTenantId(c);
+        
+        if (tenantId && id !== tenantId) {
+            return c.json({ error: '无权修改其他租户数据' }, 403)
+        }
+        
         const { name, email, company, country, vat_number, role, status } = await c.req.json()
         await c.env.DB.prepare(
             'UPDATE tenants SET name = ?, email = ?, company = ?, country = ?, vat_number = ?, role = ?, status = ? WHERE tenant_id = ?'
@@ -228,6 +283,12 @@ app.put('/api/v1/tenants/:id', async (c) => {
 app.delete('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id')
+        const tenantId = getTenantId(c);
+        
+        if (tenantId && id !== tenantId) {
+            return c.json({ error: '无权删除其他租户数据' }, 403)
+        }
+        
         await c.env.DB.prepare('DELETE FROM tenants WHERE tenant_id = ?').bind(id).run()
         return c.json({ success: true, message: '租户删除成功' })
     } catch (error) {
@@ -238,6 +299,12 @@ app.delete('/api/v1/tenants/:id', async (c) => {
 app.get('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
+        const tenantId = getTenantId(c);
+        
+        if (tenantId && id !== tenantId) {
+            return c.json({ error: '无权访问其他租户数据' }, 403)
+        }
+        
         const { results } = await c.env.DB.prepare(
             'SELECT tp.*, p.name as platform_name, p.icon FROM tenant_platforms tp JOIN platforms p ON tp.platform_code = p.code WHERE tp.tenant_id = ?'
         ).bind(id).all()
@@ -250,6 +317,12 @@ app.get('/api/v1/tenants/:id/platforms', async (c) => {
 app.post('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
+        const tenantId = getTenantId(c);
+        
+        if (tenantId && id !== tenantId) {
+            return c.json({ error: '无权修改其他租户数据' }, 403)
+        }
+        
         const { platform_code, platform_account_id, api_key } = await c.req.json()
         await c.env.DB.prepare(
             'INSERT INTO tenant_platforms (tenant_id, platform_code, platform_account_id, api_key, is_active, connected_at) VALUES (?, ?, ?, ?, ?, datetime("now")) ON CONFLICT(tenant_id, platform_code) DO UPDATE SET platform_account_id = ?, api_key = ?, connected_at = datetime("now")'
@@ -265,9 +338,14 @@ app.post('/api/v1/tenants/:id/platforms', async (c) => {
 // =============================================
 app.get('/api/v1/filings', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
         const { results } = await c.env.DB.prepare(
-            'SELECT * FROM filings ORDER BY created_at DESC'
-        ).all()
+            'SELECT * FROM filings WHERE tenant_id = ? ORDER BY created_at DESC'
+        ).bind(tenantId).all()
         return c.json({ success: true, data: results, total: results.length })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -276,13 +354,18 @@ app.get('/api/v1/filings', async (c) => {
 
 app.post('/api/v1/filings', async (c) => {
     try {
-        const { tenant_id, period, country, total_net, total_vat, total_gross, transaction_count, status } = await c.req.json()
-        if (!tenant_id || !period) {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
+        const { period, country, total_net, total_vat, total_gross, transaction_count, status } = await c.req.json()
+        if (!period) {
             return c.json({ error: '缺少必填字段' }, 400)
         }
         await c.env.DB.prepare(
             'INSERT INTO filings (tenant_id, period, country, total_net, total_vat, total_gross, transaction_count, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))'
-        ).bind(tenant_id, period, country || '', total_net || 0, total_vat || 0, total_gross || 0, transaction_count || 0, status || 'draft').run()
+        ).bind(tenantId, period, country || '', total_net || 0, total_vat || 0, total_gross || 0, transaction_count || 0, status || 'draft').run()
         return c.json({ success: true, message: '申报记录创建成功' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -294,9 +377,14 @@ app.post('/api/v1/filings', async (c) => {
 // =============================================
 app.get('/api/v1/vat-profiles', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
         const { results } = await c.env.DB.prepare(
-            'SELECT * FROM vat_profiles'
-        ).all()
+            'SELECT * FROM vat_profiles WHERE tenant_id = ?'
+        ).bind(tenantId).all()
         return c.json({ success: true, data: results, total: results.length })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -305,13 +393,18 @@ app.get('/api/v1/vat-profiles', async (c) => {
 
 app.post('/api/v1/vat-profiles', async (c) => {
     try {
-        const { tenant_id, vat_number, country, company_name, company_address, tax_rate, is_default } = await c.req.json()
-        if (!tenant_id || !vat_number || !country) {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
+        const { vat_number, country, company_name, company_address, tax_rate, is_default } = await c.req.json()
+        if (!vat_number || !country) {
             return c.json({ error: '缺少必填字段' }, 400)
         }
         await c.env.DB.prepare(
             'INSERT INTO vat_profiles (tenant_id, vat_number, country, company_name, company_address, tax_rate, is_default, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))'
-        ).bind(tenant_id, vat_number, country, company_name || '', company_address || '', tax_rate || 0, is_default || 0, 'active').run()
+        ).bind(tenantId, vat_number, country, company_name || '', company_address || '', tax_rate || 0, is_default || 0, 'active').run()
         return c.json({ success: true, message: 'VAT资料创建成功' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -323,10 +416,30 @@ app.post('/api/v1/vat-profiles', async (c) => {
 // =============================================
 app.get('/api/v1/transactions', async (c) => {
     try {
-        const { results } = await c.env.DB.prepare(
-            'SELECT * FROM transactions ORDER BY created_at DESC'
-        ).all()
-        return c.json({ success: true, data: results, total: results.length })
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
+        const country = c.req.query('country');
+        const platform = c.req.query('platform');
+        const status = c.req.query('status');
+        const startDate = c.req.query('startDate');
+        const endDate = c.req.query('endDate');
+
+        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
+        const params = [tenantId];
+
+        if (country) { query += ' AND country = ?'; params.push(country); }
+        if (platform) { query += ' AND platform = ?'; params.push(platform); }
+        if (status) { query += ' AND status = ?'; params.push(status); }
+        if (startDate) { query += ' AND order_date >= ?'; params.push(startDate); }
+        if (endDate) { query += ' AND order_date <= ?'; params.push(endDate); }
+
+        query += ' ORDER BY created_at DESC LIMIT 1000';
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
+        
+        return c.json({ success: true, data: results, total: results.length });
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
@@ -334,13 +447,18 @@ app.get('/api/v1/transactions', async (c) => {
 
 app.post('/api/v1/transactions', async (c) => {
     try {
-        const { tenant_id, order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity } = await c.req.json()
-        if (!tenant_id || !order_id) {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
+        const { order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity } = await c.req.json()
+        if (!order_id) {
             return c.json({ error: '缺少必填字段' }, 400)
         }
         await c.env.DB.prepare(
             'INSERT INTO transactions (tenant_id, order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))'
-        ).bind(tenant_id, order_id, order_date || null, country || '', vat_number || '', net_amount || 0, vat_amount || 0, gross_amount || 0, tax_rate || 0, period || '', platform || '', status || 'pending', product_sku || '', quantity || 1).run()
+        ).bind(tenantId, order_id, order_date || null, country || '', vat_number || '', net_amount || 0, vat_amount || 0, gross_amount || 0, tax_rate || 0, period || '', platform || '', status || 'pending', product_sku || '', quantity || 1).run()
         return c.json({ success: true, message: '交易记录创建成功' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -352,6 +470,11 @@ app.post('/api/v1/transactions', async (c) => {
 // =============================================
 app.post('/api/v1/transactions/batch', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const transactions = await c.req.json();
         if (!transactions || !transactions.length) {
             return c.json({ error: '没有数据' }, 400);
@@ -364,7 +487,8 @@ app.post('/api/v1/transactions/batch', async (c) => {
                 (tenant_id, order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity, created_at) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))`
             ).bind(
-                item.tenant_id, item.order_id || `ORD-${Date.now()}-${created}`,
+                tenantId,
+                item.order_id || `ORD-${Date.now()}-${created}`,
                 item.order_date || new Date().toISOString().split('T')[0],
                 item.country, item.vat_number || '',
                 item.net_amount || 0, item.vat_amount || 0,
@@ -394,6 +518,11 @@ app.post('/api/v1/transactions/batch', async (c) => {
 // =============================================
 app.get('/api/v1/transactions/stats', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const { results } = await c.env.DB.prepare(
             `SELECT 
                 COUNT(*) as total,
@@ -403,8 +532,8 @@ app.get('/api/v1/transactions/stats', async (c) => {
                 SUM(CASE WHEN status = 'reported' THEN 1 ELSE 0 END) as reported,
                 SUM(net_amount) as total_net,
                 SUM(vat_amount) as total_vat
-            FROM transactions`
-        ).all();
+            FROM transactions WHERE tenant_id = ?`
+        ).bind(tenantId).all();
 
         return c.json({
             success: true,
@@ -421,9 +550,17 @@ app.get('/api/v1/transactions/stats', async (c) => {
 app.get('/api/v1/settings/:key', async (c) => {
     try {
         const key = c.req.param('key')
-        const result = await c.env.DB.prepare(
-            'SELECT setting_value FROM system_settings WHERE setting_key = ?'
-        ).bind(key).first()
+        const tenantId = getTenantId(c);
+        
+        let query = 'SELECT setting_value FROM system_settings WHERE setting_key = ?';
+        const params = [key];
+        
+        if (tenantId) {
+            query += ' AND (tenant_id = ? OR tenant_id IS NULL)';
+            params.push(tenantId);
+        }
+        
+        const result = await c.env.DB.prepare(query).bind(...params).first()
         return c.json({ success: true, data: result || { setting_value: null } })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -432,10 +569,25 @@ app.get('/api/v1/settings/:key', async (c) => {
 
 app.get('/api/v1/settings', async (c) => {
     try {
-        const { results } = await c.env.DB.prepare(
-            'SELECT setting_key, setting_value, updated_at FROM system_settings'
-        ).all()
-        return c.json({ success: true, data: results })
+        const tenantId = getTenantId(c);
+        
+        let query = 'SELECT setting_key, setting_value, updated_at FROM system_settings';
+        const params = [];
+        
+        if (tenantId) {
+            query += ' WHERE tenant_id = ? OR tenant_id IS NULL';
+            params.push(tenantId);
+        }
+        
+        const { results } = await c.env.DB.prepare(query).bind(...params).all()
+        
+        // 合并为对象
+        const settings = {};
+        results.forEach(row => {
+            settings[row.setting_key] = row.setting_value;
+        });
+        
+        return c.json({ success: true, data: settings })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
@@ -443,13 +595,20 @@ app.get('/api/v1/settings', async (c) => {
 
 app.post('/api/v1/settings', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
         const { key, value } = await c.req.json()
         if (!key) {
             return c.json({ error: '缺少设置键' }, 400)
         }
         await c.env.DB.prepare(
-            'INSERT INTO system_settings (setting_key, setting_value, updated_at) VALUES (?, ?, datetime("now")) ON CONFLICT(setting_key) DO UPDATE SET setting_value = ?, updated_at = datetime("now")'
-        ).bind(key, value, value).run()
+            `INSERT INTO system_settings (setting_key, setting_value, tenant_id, updated_at) 
+             VALUES (?, ?, ?, datetime("now")) 
+             ON CONFLICT(setting_key, tenant_id) DO UPDATE SET setting_value = ?, updated_at = datetime("now")`
+        ).bind(key, value, tenantId, value).run()
         return c.json({ success: true, message: '设置更新成功' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -461,17 +620,27 @@ app.post('/api/v1/settings', async (c) => {
 // =============================================
 app.get('/api/v1/dashboard', async (c) => {
     try {
-        const tenantsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM tenants').first()
-        const filingsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM filings').first()
-        const transactionsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM transactions').first()
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
+        const filingsCount = await c.env.DB.prepare(
+            'SELECT COUNT(*) as count FROM filings WHERE tenant_id = ?'
+        ).bind(tenantId).first();
+        
+        const transactionsCount = await c.env.DB.prepare(
+            'SELECT COUNT(*) as count FROM transactions WHERE tenant_id = ?'
+        ).bind(tenantId).first();
+        
         const recentActivities = await c.env.DB.prepare(
-            'SELECT "交易" as type, order_id as id, created_at FROM transactions ORDER BY created_at DESC LIMIT 5'
-        ).all()
+            'SELECT "交易" as type, order_id as id, created_at FROM transactions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 5'
+        ).bind(tenantId).all();
 
         return c.json({
             success: true,
             data: {
-                totalTenants: tenantsCount?.count || 0,
+                totalTenants: 1,
                 totalFilings: filingsCount?.count || 0,
                 totalTransactions: transactionsCount?.count || 0,
                 recentActivities: recentActivities.results || [],
@@ -489,9 +658,15 @@ app.get('/api/v1/dashboard', async (c) => {
 // =============================================
 app.get('/api/v1/reports', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const { results } = await c.env.DB.prepare(
-            'SELECT * FROM filings ORDER BY created_at DESC LIMIT 10'
-        ).all()
+            'SELECT * FROM filings WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 10'
+        ).bind(tenantId).all();
+        
         return c.json({ success: true, data: results, total: results.length })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -500,18 +675,19 @@ app.get('/api/v1/reports', async (c) => {
 
 app.post('/api/v1/reports/generate', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const { transactionIds, filters } = await c.req.json();
         
-        let query = 'SELECT * FROM transactions WHERE 1=1';
-        const params = [];
+        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
+        const params = [tenantId];
         
         if (transactionIds && transactionIds.length) {
             query += ` AND id IN (${transactionIds.map(() => '?').join(',')})`;
             params.push(...transactionIds);
-        }
-        if (filters?.tenantId) {
-            query += ' AND tenant_id = ?';
-            params.push(filters.tenantId);
         }
         if (filters?.country) {
             query += ' AND country = ?';
@@ -547,7 +723,7 @@ app.post('/api/v1/reports/generate', async (c) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))`
         ).bind(
             reportId,
-            filters?.tenantId || '',
+            tenantId,
             filters?.country || '',
             filters?.platform || '',
             filters?.period || '',
@@ -567,11 +743,11 @@ app.post('/api/v1/reports/generate', async (c) => {
                 totalGross,
                 transactionCount: results.length
             }
-        });
+        })
     } catch (error) {
-        return c.json({ error: error.message }, 500);
+        return c.json({ error: error.message }, 500)
     }
-});
+})
 
 // =============================================
 // ===== 税务接口 =====
@@ -666,10 +842,15 @@ app.post('/api/v1/tax/validate', async (c) => {
 
 app.post('/api/v1/tax/validate-batch', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+        
         const { transactionIds } = await c.req.json();
         const { results } = await c.env.DB.prepare(
-            `SELECT * FROM transactions WHERE id IN (${transactionIds.map(() => '?').join(',')})`
-        ).bind(...transactionIds).all();
+            `SELECT * FROM transactions WHERE tenant_id = ? AND id IN (${transactionIds.map(() => '?').join(',')})`
+        ).bind(tenantId, ...transactionIds).all();
 
         let validCount = 0;
         let invalidCount = 0;
@@ -680,8 +861,8 @@ app.post('/api/v1/tax/validate-batch', async (c) => {
             const isValid = Math.abs(transaction.vat_amount - expectedVAT) < 1;
             
             await c.env.DB.prepare(
-                `UPDATE transactions SET status = ?, tax_validated = ? WHERE id = ?`
-            ).bind(isValid ? 'validated' : 'error', isValid ? 1 : 0, transaction.id).run();
+                `UPDATE transactions SET status = ?, tax_validated = ? WHERE tenant_id = ? AND id = ?`
+            ).bind(isValid ? 'validated' : 'error', isValid ? 1 : 0, tenantId, transaction.id).run();
 
             if (isValid) validCount++;
             else invalidCount++;
@@ -694,7 +875,7 @@ app.post('/api/v1/tax/validate-batch', async (c) => {
             total: results.length
         });
     } catch (error) {
-        return c.json({ error: error.message }, 500);
+        return c.json({ error: error.message }, 500)
     }
 })
 
@@ -781,13 +962,17 @@ app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
 // =============================================
 app.post('/api/v1/files/upload', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const body = await c.req.parseBody();
         const files = body['files'];
-        const tenantId = body['tenantId'];
-        const country = body['country'];
-        const platform = body['platform'];
-        const year = body['year'];
-        const month = body['month'];
+        const country = body['country'] || 'GB';
+        const platform = body['platform'] || 'amazon';
+        const year = body['year'] || new Date().getFullYear().toString();
+        const month = body['month'] || '01';
 
         if (!files) {
             return c.json({ error: '没有文件' }, 400);
@@ -824,35 +1009,54 @@ app.post('/api/v1/files/upload', async (c) => {
             }
         }
 
+        let created = 0;
+        for (const item of transactions) {
+            await c.env.DB.prepare(
+                `INSERT INTO transactions 
+                (tenant_id, order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))`
+            ).bind(
+                item.tenant_id, item.order_id, item.order_date,
+                item.country, item.vat_number,
+                item.net_amount, item.vat_amount, item.gross_amount,
+                item.tax_rate, item.period, item.platform,
+                item.status, item.product_sku, item.quantity
+            ).run();
+            created++;
+        }
+
         return c.json({
             success: true,
-            message: `上传成功，解析 ${transactions.length} 条记录`,
+            message: `上传成功，解析 ${transactions.length} 条记录，保存 ${created} 条`,
             data: {
                 processed: transactions.length,
-                transactions: transactions
+                saved: created
             }
-        });
+        })
     } catch (error) {
         console.error('❌ 文件上传错误:', error);
-        return c.json({ error: error.message }, 500);
+        return c.json({ error: error.message }, 500)
     }
-});
+})
 
 // =============================================
 // ===== 获取文件列表 =====
 // =============================================
 app.get('/api/v1/files', async (c) => {
     try {
-        const tenantId = c.req.query('tenantId');
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const country = c.req.query('country');
         const platform = c.req.query('platform');
         const year = c.req.query('year');
         const month = c.req.query('month');
 
-        let query = 'SELECT * FROM transactions WHERE 1=1';
-        const params = [];
+        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
+        const params = [tenantId];
 
-        if (tenantId) { query += ' AND tenant_id = ?'; params.push(tenantId); }
         if (country) { query += ' AND country = ?'; params.push(country); }
         if (platform) { query += ' AND platform = ?'; params.push(platform); }
         if (year) { query += ' AND substr(period, 1, 4) = ?'; params.push(year); }
@@ -861,24 +1065,43 @@ app.get('/api/v1/files', async (c) => {
         query += ' ORDER BY created_at DESC LIMIT 1000';
         const { results } = await c.env.DB.prepare(query).bind(...params).all();
 
-        return c.json({ success: true, data: results, total: results.length });
+        return c.json({ success: true, data: results, total: results.length })
     } catch (error) {
-        return c.json({ error: error.message }, 500);
+        return c.json({ error: error.message }, 500)
     }
-});
+})
 
 // =============================================
 // ===== 删除文件/交易 =====
 // =============================================
 app.delete('/api/v1/files/:id', async (c) => {
     try {
+        const tenantId = getTenantId(c);
+        if (!tenantId) {
+            return c.json({ error: '缺少租户ID' }, 400)
+        }
+
         const id = c.req.param('id');
-        await c.env.DB.prepare('DELETE FROM transactions WHERE id = ?').bind(id).run();
-        return c.json({ success: true, message: '删除成功' });
+        
+        // 检查文件是否属于当前租户
+        const file = await c.env.DB.prepare(
+            'SELECT tenant_id FROM transactions WHERE id = ?'
+        ).bind(id).first();
+        
+        if (!file) {
+            return c.json({ error: '文件不存在' }, 404);
+        }
+        
+        if (file.tenant_id !== tenantId) {
+            return c.json({ error: '无权删除此文件' }, 403);
+        }
+        
+        await c.env.DB.prepare('DELETE FROM transactions WHERE tenant_id = ? AND id = ?').bind(tenantId, id).run();
+        return c.json({ success: true, message: '删除成功' })
     } catch (error) {
-        return c.json({ error: error.message }, 500);
+        return c.json({ error: error.message }, 500)
     }
-});
+})
 
 // =============================================
 // ===== 404 =====
