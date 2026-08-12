@@ -40,31 +40,40 @@ const COUNTRY_NAME_MAP = {
 };
 
 // =============================================
-// ===== 租户中间件 =====
+// ===== 租户中间件（增强版） =====
 // =============================================
 app.use('*', async (c, next) => {
     const path = c.req.path;
     
-    // 跳过登录和健康检查接口
     if (path === '/api/v1/auth/login' || path === '/health' || path === '/') {
         return next();
     }
 
-    // 获取租户ID
     let tenantId = c.req.header('X-Tenant-ID') || c.req.query('tenantId');
-    
-    // 如果没有租户ID，使用默认值
+    const userRole = c.req.header('X-User-Role') || 'user';
+    const userTenantId = c.req.header('X-User-Tenant-ID') || tenantId;
+
     if (!tenantId) {
         tenantId = 'admin_tenant';
-        console.log('⚠️ 使用默认租户ID:', tenantId);
     }
 
     c.set('tenantId', tenantId);
+    c.set('userRole', userRole);
+    c.set('userTenantId', userTenantId);
+    
     return next();
 });
 
 const getTenantId = (c) => {
     return c.get('tenantId') || 'admin_tenant';
+};
+
+const getUserRole = (c) => {
+    return c.get('userRole') || 'user';
+};
+
+const isAdmin = (c) => {
+    return getUserRole(c) === 'admin';
 };
 
 // =============================================
@@ -98,7 +107,6 @@ app.get('/', (c) => {
             'POST /api/v1/transactions',
             'POST /api/v1/transactions/batch',
             'GET /api/v1/transactions/stats',
-            'GET /api/v1/settings/:key',
             'GET /api/v1/settings',
             'POST /api/v1/settings',
             'GET /api/v1/dashboard',
@@ -107,8 +115,6 @@ app.get('/', (c) => {
             'POST /api/v1/tax/validate',
             'POST /api/v1/tax/validate-batch',
             'POST /api/v1/tax/summary',
-            'POST /api/v1/tax/c79/upload',
-            'POST /api/v1/tax/c88/upload',
             'GET /api/v1/tax/countries',
             'GET /api/v1/tax/platforms',
             'GET /api/v1/tax/ecommerce-platforms',
@@ -190,54 +196,64 @@ app.get('/api/v1/platforms', async (c) => {
 })
 
 // =============================================
-// ===== 租户接口 =====
+// ===== 租户接口（权限控制） =====
 // =============================================
 app.get('/api/v1/tenants', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
+        
         let query = 'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants';
         const params = [];
         
-        if (tenantId) {
+        if (role !== 'admin') {
             query += ' WHERE tenant_id = ?';
             params.push(tenantId);
         }
         
-        const { results } = await c.env.DB.prepare(query).bind(...params).all()
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
         return c.json({
             success: true,
             data: results,
             total: results.length
-        })
+        });
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        return c.json({ error: error.message }, 500);
     }
 })
 
 app.get('/api/v1/tenants/:id', async (c) => {
     try {
-        const id = c.req.param('id')
+        const id = c.req.param('id');
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
         
-        if (tenantId && id !== tenantId) {
-            return c.json({ error: '无权访问其他租户数据' }, 403)
+        if (role !== 'admin' && id !== tenantId) {
+            return c.json({ error: '无权访问其他租户数据' }, 403);
         }
         
         const result = await c.env.DB.prepare(
             'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants WHERE tenant_id = ?'
-        ).bind(id).first()
+        ).bind(id).first();
+        
         if (!result) {
-            return c.json({ error: '租户不存在' }, 404)
+            return c.json({ error: '租户不存在' }, 404);
         }
-        return c.json({ success: true, data: result })
+        return c.json({ success: true, data: result });
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        return c.json({ error: error.message }, 500);
     }
 })
 
 app.post('/api/v1/tenants', async (c) => {
     try {
-        const { tenant_id, name, email, password, company, country, vat_number, role } = await c.req.json()
+        const role = getUserRole(c);
+        
+        if (role !== 'admin') {
+            return c.json({ error: '权限不足，仅管理员可创建租户' }, 403);
+        }
+        
+        const { tenant_id, name, email, password, company, country, vat_number, role: userRole } = await c.req.json();
         if (!tenant_id || !name || !email || !password) {
             return c.json({ error: '缺少必填字段' }, 400)
         }
@@ -245,7 +261,7 @@ app.post('/api/v1/tenants', async (c) => {
         const hash = await bcrypt.hash(password, 10)
         await c.env.DB.prepare(
             'INSERT INTO tenants (tenant_id, name, email, password_hash, company, country, vat_number, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))'
-        ).bind(tenant_id, name, email, hash, company || '', country || 'GB', vat_number || '', role || 'user', 'active').run()
+        ).bind(tenant_id, name, email, hash, company || '', country || 'GB', vat_number || '', userRole || 'user', 'active').run()
 
         return c.json({ success: true, message: '租户创建成功', tenant_id })
     } catch (error) {
@@ -255,17 +271,18 @@ app.post('/api/v1/tenants', async (c) => {
 
 app.put('/api/v1/tenants/:id', async (c) => {
     try {
-        const id = c.req.param('id')
+        const id = c.req.param('id');
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
         
-        if (tenantId && id !== tenantId) {
-            return c.json({ error: '无权修改其他租户数据' }, 403)
+        if (role !== 'admin' && id !== tenantId) {
+            return c.json({ error: '无权修改其他租户数据' }, 403);
         }
         
-        const { name, email, company, country, vat_number, role, status } = await c.req.json()
+        const { name, email, company, country, vat_number, role: userRole, status } = await c.req.json()
         await c.env.DB.prepare(
             'UPDATE tenants SET name = ?, email = ?, company = ?, country = ?, vat_number = ?, role = ?, status = ? WHERE tenant_id = ?'
-        ).bind(name, email, company || '', country || 'GB', vat_number || '', role || 'user', status || 'active', id).run()
+        ).bind(name, email, company || '', country || 'GB', vat_number || '', userRole || 'user', status || 'active', id).run()
         return c.json({ success: true, message: '租户更新成功' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -274,14 +291,14 @@ app.put('/api/v1/tenants/:id', async (c) => {
 
 app.delete('/api/v1/tenants/:id', async (c) => {
     try {
-        const id = c.req.param('id')
-        const tenantId = getTenantId(c);
+        const role = getUserRole(c);
         
-        if (tenantId && id !== tenantId) {
-            return c.json({ error: '无权删除其他租户数据' }, 403)
+        if (role !== 'admin') {
+            return c.json({ error: '权限不足，仅管理员可删除租户' }, 403);
         }
         
-        await c.env.DB.prepare('DELETE FROM tenants WHERE tenant_id = ?').bind(id).run()
+        const id = c.req.param('id');
+        await c.env.DB.prepare('DELETE FROM tenants WHERE tenant_id = ?').bind(id).run();
         return c.json({ success: true, message: '租户删除成功' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -291,9 +308,10 @@ app.delete('/api/v1/tenants/:id', async (c) => {
 app.get('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
         
-        if (tenantId && id !== tenantId) {
+        if (role !== 'admin' && id !== tenantId) {
             return c.json({ error: '无权访问其他租户数据' }, 403)
         }
         
@@ -309,9 +327,10 @@ app.get('/api/v1/tenants/:id/platforms', async (c) => {
 app.post('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
         
-        if (tenantId && id !== tenantId) {
+        if (role !== 'admin' && id !== tenantId) {
             return c.json({ error: '无权修改其他租户数据' }, 403)
         }
         
@@ -330,10 +349,19 @@ app.post('/api/v1/tenants/:id/platforms', async (c) => {
 // =============================================
 app.get('/api/v1/filings', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
-        const { results } = await c.env.DB.prepare(
-            'SELECT * FROM filings WHERE tenant_id = ? ORDER BY created_at DESC'
-        ).bind(tenantId).all()
+        
+        let query = 'SELECT * FROM filings';
+        const params = [];
+        
+        if (role !== 'admin') {
+            query += ' WHERE tenant_id = ?';
+            params.push(tenantId);
+        }
+        
+        query += ' ORDER BY created_at DESC';
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
         return c.json({ success: true, data: results, total: results.length })
     } catch (error) {
         return c.json({ error: error.message }, 500)
@@ -388,10 +416,11 @@ app.post('/api/v1/vat-profiles', async (c) => {
 })
 
 // =============================================
-// ===== 交易记录 =====
+// ===== 交易记录（权限控制） =====
 // =============================================
 app.get('/api/v1/transactions', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
         const country = c.req.query('country');
         const platform = c.req.query('platform');
@@ -399,8 +428,15 @@ app.get('/api/v1/transactions', async (c) => {
         const startDate = c.req.query('startDate');
         const endDate = c.req.query('endDate');
 
-        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
-        const params = [tenantId];
+        let query = 'SELECT * FROM transactions';
+        const params = [];
+        
+        if (role !== 'admin') {
+            query += ' WHERE tenant_id = ?';
+            params.push(tenantId);
+        } else {
+            query += ' WHERE 1=1';
+        }
 
         if (country) { query += ' AND country = ?'; params.push(country); }
         if (platform) { query += ' AND platform = ?'; params.push(platform); }
@@ -478,22 +514,30 @@ app.post('/api/v1/transactions/batch', async (c) => {
 });
 
 // =============================================
-// ===== 交易统计 =====
+// ===== 交易统计（权限控制） =====
 // =============================================
 app.get('/api/v1/transactions/stats', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
-        const { results } = await c.env.DB.prepare(
-            `SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) as validated,
-                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error,
-                SUM(CASE WHEN status = 'reported' THEN 1 ELSE 0 END) as reported,
-                SUM(net_amount) as total_net,
-                SUM(vat_amount) as total_vat
-            FROM transactions WHERE tenant_id = ?`
-        ).bind(tenantId).all();
+        
+        let query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) as validated,
+            SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error,
+            SUM(CASE WHEN status = 'reported' THEN 1 ELSE 0 END) as reported,
+            SUM(net_amount) as total_net,
+            SUM(vat_amount) as total_vat
+            FROM transactions`;
+        const params = [];
+        
+        if (role !== 'admin') {
+            query += ' WHERE tenant_id = ?';
+            params.push(tenantId);
+        }
+        
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
 
         return c.json({
             success: true,
@@ -507,26 +551,6 @@ app.get('/api/v1/transactions/stats', async (c) => {
 // =============================================
 // ===== 系统设置 =====
 // =============================================
-app.get('/api/v1/settings/:key', async (c) => {
-    try {
-        const key = c.req.param('key')
-        const tenantId = getTenantId(c);
-        
-        let query = 'SELECT setting_value FROM system_settings WHERE setting_key = ?';
-        const params = [key];
-        
-        if (tenantId) {
-            query += ' AND (tenant_id = ? OR tenant_id IS NULL)';
-            params.push(tenantId);
-        }
-        
-        const result = await c.env.DB.prepare(query).bind(...params).first()
-        return c.json({ success: true, data: result || { setting_value: null } })
-    } catch (error) {
-        return c.json({ error: error.message }, 500)
-    }
-})
-
 app.get('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -571,49 +595,80 @@ app.post('/api/v1/settings', async (c) => {
 })
 
 // =============================================
-// ===== Dashboard =====
+// ===== Dashboard（权限控制） =====
 // =============================================
 app.get('/api/v1/dashboard', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
-
-        const filingsCount = await c.env.DB.prepare(
-            'SELECT COUNT(*) as count FROM filings WHERE tenant_id = ?'
-        ).bind(tenantId).first();
         
-        const transactionsCount = await c.env.DB.prepare(
-            'SELECT COUNT(*) as count FROM transactions WHERE tenant_id = ?'
-        ).bind(tenantId).first();
-        
-        const recentActivities = await c.env.DB.prepare(
-            'SELECT "交易" as type, order_id as id, created_at FROM transactions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 5'
-        ).bind(tenantId).all();
+        if (role === 'admin') {
+            const tenantsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM tenants').first();
+            const filingsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM filings').first();
+            const transactionsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM transactions').first();
+            const recentActivities = await c.env.DB.prepare(
+                'SELECT "交易" as type, order_id as id, created_at FROM transactions ORDER BY created_at DESC LIMIT 5'
+            ).all();
 
-        return c.json({
-            success: true,
-            data: {
-                totalTenants: 1,
-                totalFilings: filingsCount?.count || 0,
-                totalTransactions: transactionsCount?.count || 0,
-                recentActivities: recentActivities.results || [],
-                vatTrend: [],
-                countryDistribution: []
-            }
-        })
+            return c.json({
+                success: true,
+                data: {
+                    totalTenants: tenantsCount?.count || 0,
+                    totalFilings: filingsCount?.count || 0,
+                    totalTransactions: transactionsCount?.count || 0,
+                    recentActivities: recentActivities.results || [],
+                    vatTrend: [],
+                    countryDistribution: []
+                }
+            });
+        } else {
+            const filingsCount = await c.env.DB.prepare(
+                'SELECT COUNT(*) as count FROM filings WHERE tenant_id = ?'
+            ).bind(tenantId).first();
+            
+            const transactionsCount = await c.env.DB.prepare(
+                'SELECT COUNT(*) as count FROM transactions WHERE tenant_id = ?'
+            ).bind(tenantId).first();
+            
+            const recentActivities = await c.env.DB.prepare(
+                'SELECT "交易" as type, order_id as id, created_at FROM transactions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 5'
+            ).bind(tenantId).all();
+
+            return c.json({
+                success: true,
+                data: {
+                    totalTenants: 1,
+                    totalFilings: filingsCount?.count || 0,
+                    totalTransactions: transactionsCount?.count || 0,
+                    recentActivities: recentActivities.results || [],
+                    vatTrend: [],
+                    countryDistribution: []
+                }
+            });
+        }
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        return c.json({ error: error.message }, 500);
     }
 })
 
 // =============================================
-// ===== 报告接口 =====
+// ===== 报告接口（权限控制） =====
 // =============================================
 app.get('/api/v1/reports', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
-        const { results } = await c.env.DB.prepare(
-            'SELECT * FROM filings WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 10'
-        ).bind(tenantId).all();
+        
+        let query = 'SELECT * FROM filings';
+        const params = [];
+        
+        if (role !== 'admin') {
+            query += ' WHERE tenant_id = ?';
+            params.push(tenantId);
+        }
+        
+        query += ' ORDER BY created_at DESC LIMIT 10';
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
         
         return c.json({ success: true, data: results, total: results.length })
     } catch (error) {
@@ -976,18 +1031,26 @@ app.post('/api/v1/files/upload', async (c) => {
 })
 
 // =============================================
-// ===== 获取文件列表 =====
+// ===== 获取文件列表（权限控制） =====
 // =============================================
 app.get('/api/v1/files', async (c) => {
     try {
+        const role = getUserRole(c);
         const tenantId = getTenantId(c);
         const country = c.req.query('country');
         const platform = c.req.query('platform');
         const year = c.req.query('year');
         const month = c.req.query('month');
 
-        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
-        const params = [tenantId];
+        let query = 'SELECT * FROM transactions';
+        const params = [];
+        
+        if (role !== 'admin') {
+            query += ' WHERE tenant_id = ?';
+            params.push(tenantId);
+        } else {
+            query += ' WHERE 1=1';
+        }
 
         if (country) { query += ' AND country = ?'; params.push(country); }
         if (platform) { query += ' AND platform = ?'; params.push(platform); }

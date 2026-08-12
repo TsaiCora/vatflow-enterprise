@@ -35,7 +35,6 @@ import {
 
 const drawerWidth = 280;
 
-// ===== 菜单配置 =====
 const menuItems = [
     { path: '/dashboard', label: '概览看板', icon: <DashboardIcon /> },
     { path: '/tenants', label: '客户管理', icon: <PeopleIcon /> },
@@ -62,9 +61,10 @@ function Layout() {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [anchorEl, setAnchorEl] = useState(null);
 
-    // ===== 获取当前用户信息 =====
     const user = safeParseJSON(localStorage.getItem('user'));
     const tenantId = localStorage.getItem('tenantId') || '未分配';
+    const userRole = localStorage.getItem('userRole') || 'user';
+    const isAdmin = userRole === 'admin';
 
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
@@ -82,18 +82,17 @@ function Layout() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('tenantId');
+        localStorage.removeItem('userRole');
         navigate('/login');
         handleMenuClose();
     };
 
-    // ===== 获取当前页面标题 =====
     const currentPage = menuItems.find(item => 
         location.pathname === item.path || location.pathname.startsWith(item.path + '/')
     );
 
     const drawer = (
         <Box>
-            {/* Logo区域 */}
             <Box sx={{ 
                 p: 2, 
                 display: 'flex', 
@@ -109,7 +108,7 @@ function Layout() {
                 </Box>
             </Box>
 
-            {/* ===== 租户信息显示 ===== */}
+            {/* ===== 租户信息（增强版） ===== */}
             <Box sx={{ 
                 p: 2, 
                 borderBottom: '1px solid', 
@@ -128,11 +127,13 @@ function Layout() {
                         <Typography variant="caption" color="text.secondary" display="block">
                             ID: {tenantId}
                         </Typography>
+                        <Typography variant="caption" color={isAdmin ? 'primary' : 'text.secondary'} display="block">
+                            {isAdmin ? '👑 管理员' : '👤 普通用户'}
+                        </Typography>
                     </Box>
                 </Box>
             </Box>
 
-            {/* 菜单列表 */}
             <List sx={{ px: 2, py: 1 }}>
                 {menuItems.map((item) => {
                     const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
@@ -175,7 +176,6 @@ function Layout() {
                 })}
             </List>
 
-            {/* 底部信息 */}
             <Divider sx={{ mx: 2 }} />
             <Box sx={{ p: 2 }}>
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ textAlign: 'center' }}>
@@ -190,7 +190,6 @@ function Layout() {
 
     return (
         <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-            {/* ===== 顶部导航栏 ===== */}
             <AppBar
                 position="fixed"
                 sx={{
@@ -213,20 +212,20 @@ function Layout() {
                         <MenuIcon />
                     </IconButton>
 
-                    {/* 当前页面标题 */}
                     <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 600 }}>
                         {currentPage?.label || 'VATFlow'}
                     </Typography>
 
-                    {/* ===== 租户信息（顶部右侧） ===== */}
                     <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1, mr: 2 }}>
                         <BusinessIcon fontSize="small" color="action" />
                         <Typography variant="caption" color="text.secondary">
                             {user?.company || user?.name || '租户'}
                         </Typography>
+                        {isAdmin && (
+                            <Chip label="管理员" size="small" color="primary" sx={{ height: 18, fontSize: 10 }} />
+                        )}
                     </Box>
 
-                    {/* 用户头像 */}
                     <Tooltip title="账户">
                         <IconButton onClick={handleMenuOpen} sx={{ p: 0 }}>
                             <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
@@ -235,7 +234,6 @@ function Layout() {
                         </IconButton>
                     </Tooltip>
 
-                    {/* 用户菜单 */}
                     <Menu
                         anchorEl={anchorEl}
                         open={Boolean(anchorEl)}
@@ -254,6 +252,9 @@ function Layout() {
                                 <Typography variant="caption" color="text.secondary" display="block">
                                     🏢 {user?.company || '租户'}
                                 </Typography>
+                                <Typography variant="caption" color={isAdmin ? 'primary' : 'text.secondary'} display="block">
+                                    {isAdmin ? '👑 管理员' : '👤 普通用户'}
+                                </Typography>
                             </Box>
                         </MenuItem>
                         <Divider />
@@ -265,12 +266,10 @@ function Layout() {
                 </Toolbar>
             </AppBar>
 
-            {/* ===== 侧边栏 ===== */}
             <Box
                 component="nav"
                 sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
             >
-                {/* 移动端侧边栏 */}
                 <Drawer
                     variant="temporary"
                     open={mobileOpen}
@@ -283,8 +282,6 @@ function Layout() {
                 >
                     {drawer}
                 </Drawer>
-                
-                {/* 桌面端侧边栏 */}
                 <Drawer
                     variant="permanent"
                     sx={{
@@ -302,7 +299,6 @@ function Layout() {
                 </Drawer>
             </Box>
 
-            {/* ===== 主内容区域 ===== */}
             <Box
                 component="main"
                 sx={{
@@ -313,10 +309,7 @@ function Layout() {
                     minHeight: '100vh',
                 }}
             >
-                {/* 占位空间（防止被顶部导航栏遮挡） */}
                 <Toolbar />
-                
-                {/* 渲染子路由 */}
                 <Outlet />
             </Box>
         </Box>

@@ -24,15 +24,16 @@ function Login() {
                 const user = data.data.user;
                 const token = data.data.token;
                 
-                // 存储基本信息
                 localStorage.setItem('token', token);
                 localStorage.setItem('user', JSON.stringify(user));
                 
-                // ===== 关键：存储租户ID =====
                 const tenantId = user?.tenant_id || user?.tenantId || 'admin_tenant';
                 localStorage.setItem('tenantId', tenantId);
+                localStorage.setItem('userRole', user?.role || 'user');
+                
                 console.log('🏢 当前租户ID:', tenantId);
-                console.log('🏢 用户信息:', user);
+                console.log('👤 用户角色:', user?.role || 'user');
+                console.log('👤 用户信息:', user);
                 
                 window.location.href = '/dashboard';
             } else {

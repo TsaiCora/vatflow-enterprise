@@ -21,24 +21,36 @@ window.fetch = function(url, options) {
     return originalFetch.call(this, url, options);
 };
 
-// 请求拦截器 - 添加 Token 和 Tenant ID
+// ===== 请求拦截器（增强版） =====
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('token');
         const tenantId = localStorage.getItem('tenantId');
+        const userStr = localStorage.getItem('user');
+        let userRole = 'user';
+        
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                userRole = user.role || 'user';
+            } catch (e) {}
+        }
         
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
         
-        // ===== 添加租户ID到请求头 =====
         if (tenantId) {
             config.headers['X-Tenant-ID'] = tenantId;
+            config.headers['X-User-Tenant-ID'] = tenantId;
         }
         
-        console.log('📤 API 请求:', config.method.toUpperCase(), config.url, {
+        config.headers['X-User-Role'] = userRole;
+        
+        console.log('📤 API 请求:', {
+            url: config.url,
             tenantId: tenantId,
-            data: config.data || ''
+            role: userRole
         });
         return config;
     },
@@ -48,7 +60,7 @@ api.interceptors.request.use(
     }
 );
 
-// 响应拦截器
+// ===== 响应拦截器 =====
 api.interceptors.response.use(
     (response) => {
         console.log('📥 API 响应:', response.config.url, response.status);
@@ -66,6 +78,7 @@ api.interceptors.response.use(
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('tenantId');
+                localStorage.removeItem('userRole');
                 
                 if (isLoginRequest) {
                     return Promise.reject({
@@ -83,6 +96,13 @@ api.interceptors.response.use(
                 return Promise.reject({
                     status: 401,
                     message: '登录已过期，请重新登录'
+                });
+            }
+            
+            if (error.response.status === 403) {
+                return Promise.reject({
+                    status: 403,
+                    message: error.response.data?.error || '权限不足'
                 });
             }
             
@@ -117,6 +137,7 @@ export const authAPI = {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('tenantId');
+        localStorage.removeItem('userRole');
         return api.post('/api/v1/auth/logout');
     },
     getCurrentUser: () => api.get('/api/v1/auth/me'),
