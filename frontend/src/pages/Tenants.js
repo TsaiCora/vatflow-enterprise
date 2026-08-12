@@ -37,15 +37,14 @@ import {
     Delete as DeleteIcon,
     CheckCircle as CheckCircleIcon,
     Cancel as CancelIcon,
-    Business as BusinessIcon
+    Business as BusinessIcon,
+    Close as CloseIcon
 } from '@mui/icons-material';
-import { tenantAPI } from '../services/api';
 
 function Tenants() {
     const [loading, setLoading] = useState(false);
     const [tenants, setTenants] = useState([]);
     const [error, setError] = useState(null);
-    const [success, setSuccess] = useState(false);
     const [openDialog, setOpenDialog] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -60,7 +59,6 @@ function Tenants() {
         role: 'admin'
     });
 
-    // 国家列表
     const COUNTRIES = [
         { code: 'GB', name: '英国' },
         { code: 'FR', name: '法国' },
@@ -82,16 +80,38 @@ function Tenants() {
         setLoading(true);
         setError(null);
         try {
-            const result = await tenantAPI.getTenants();
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            
+            console.log('🔑 Token:', token ? '存在' : '不存在');
+            console.log('🏢 Tenant ID:', tenantId);
+
+            const response = await fetch('https://api.vatapex.com/api/v1/tenants', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || ''
+                }
+            });
+
+            console.log('📊 响应状态:', response.status);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
             console.log('🏢 租户数据:', result);
+
             if (result && result.success) {
                 setTenants(result.data || []);
             } else {
                 setTenants([]);
+                setError(result?.error || '加载租户数据失败');
             }
         } catch (err) {
             console.error('❌ 加载失败:', err);
-            setError('加载租户数据失败');
+            setError(err.message || '加载租户数据失败');
+            setTenants([]);
         } finally {
             setLoading(false);
         }
@@ -146,15 +166,33 @@ function Tenants() {
         setError(null);
 
         try {
-            let result;
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            
+            let url = 'https://api.vatapex.com/api/v1/tenants';
+            let method = 'POST';
+            
             if (isEditing) {
-                const { password, ...updateData } = formData;
-                result = await tenantAPI.updateTenant(formData.tenant_id, updateData);
-            } else {
-                result = await tenantAPI.createTenant(formData);
+                url = `https://api.vatapex.com/api/v1/tenants/${formData.tenant_id}`;
+                method = 'PUT';
             }
+            
+            const { password, ...updateData } = formData;
+            const body = isEditing ? updateData : formData;
 
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || ''
+                },
+                body: JSON.stringify(body)
+            });
+
+            const result = await response.json();
             console.log('📥 保存结果:', result);
+
             if (result && result.success) {
                 setSnackbar({
                     open: true,
@@ -187,7 +225,18 @@ function Tenants() {
         
         setLoading(true);
         try {
-            const result = await tenantAPI.deleteTenant(tenantId);
+            const token = localStorage.getItem('token');
+            const tenantIdCurrent = localStorage.getItem('tenantId');
+            
+            const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${tenantId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantIdCurrent || ''
+                }
+            });
+
+            const result = await response.json();
             if (result && result.success) {
                 setSnackbar({ open: true, message: '✅ 租户删除成功', severity: 'success' });
                 loadData();
@@ -210,7 +259,6 @@ function Tenants() {
 
     return (
         <Box sx={{ p: 3 }}>
-            {/* 页面标题 */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     🏢 客户管理
@@ -241,7 +289,6 @@ function Tenants() {
                 </Alert>
             )}
 
-            {/* 统计 */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={4}>
                     <Card>
@@ -273,7 +320,6 @@ function Tenants() {
                 </Grid>
             </Grid>
 
-            {/* 租户列表 */}
             <TableContainer component={Paper}>
                 <Table>
                     <TableHead>
@@ -340,10 +386,14 @@ function Tenants() {
                 </Table>
             </TableContainer>
 
-            {/* 创建/编辑弹窗 */}
             <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>
-                    {isEditing ? '✏️ 编辑租户' : '➕ 添加租户'}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6">{isEditing ? '✏️ 编辑租户' : '➕ 添加租户'}</Typography>
+                        <IconButton onClick={() => setOpenDialog(false)}>
+                            <CloseIcon />
+                        </IconButton>
+                    </Box>
                 </DialogTitle>
                 <DialogContent>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
@@ -427,7 +477,6 @@ function Tenants() {
                 </DialogActions>
             </Dialog>
 
-            {/* Snackbar */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}

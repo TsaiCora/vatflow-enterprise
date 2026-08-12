@@ -21,21 +21,18 @@ function Login() {
             console.log('📥 登录响应:', data);
 
             if (data.success) {
-                // ===== 存储用户信息 =====
                 const user = data.data.user;
                 const token = data.data.token;
                 
+                // 存储基本信息
                 localStorage.setItem('token', token);
                 localStorage.setItem('user', JSON.stringify(user));
                 
-                // ===== 存储租户ID（关键！）=====
-                if (user && user.tenant_id) {
-                    localStorage.setItem('tenantId', user.tenant_id);
-                    console.log('🏢 当前租户ID:', user.tenant_id);
-                } else {
-                    // 如果没有租户ID，使用默认值
-                    localStorage.setItem('tenantId', 'default');
-                }
+                // ===== 关键：存储租户ID =====
+                const tenantId = user?.tenant_id || user?.tenantId || 'admin_tenant';
+                localStorage.setItem('tenantId', tenantId);
+                console.log('🏢 当前租户ID:', tenantId);
+                console.log('🏢 用户信息:', user);
                 
                 window.location.href = '/dashboard';
             } else {

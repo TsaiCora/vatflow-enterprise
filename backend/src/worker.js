@@ -50,28 +50,21 @@ app.use('*', async (c, next) => {
         return next();
     }
 
-    // 获取租户ID（从Header或Query参数）
-    const tenantId = c.req.header('X-Tenant-ID') || c.req.query('tenantId');
+    // 获取租户ID
+    let tenantId = c.req.header('X-Tenant-ID') || c.req.query('tenantId');
     
+    // 如果没有租户ID，使用默认值
     if (!tenantId) {
-        // 对于需要租户ID的接口，返回错误
-        if (path.startsWith('/api/v1/')) {
-            return c.json({ error: '缺少租户ID，请重新登录' }, 400);
-        }
-        return next();
+        tenantId = 'admin_tenant';
+        console.log('⚠️ 使用默认租户ID:', tenantId);
     }
 
-    // 存储租户ID到上下文
     c.set('tenantId', tenantId);
-    
     return next();
 });
 
-// =============================================
-// ===== 获取租户ID的工具函数 =====
-// =============================================
 const getTenantId = (c) => {
-    return c.get('tenantId') || c.req.header('X-Tenant-ID') || c.req.query('tenantId');
+    return c.get('tenantId') || 'admin_tenant';
 };
 
 // =============================================
@@ -226,7 +219,6 @@ app.get('/api/v1/tenants/:id', async (c) => {
         const id = c.req.param('id')
         const tenantId = getTenantId(c);
         
-        // 只能查询自己的租户信息
         if (tenantId && id !== tenantId) {
             return c.json({ error: '无权访问其他租户数据' }, 403)
         }
@@ -339,10 +331,6 @@ app.post('/api/v1/tenants/:id/platforms', async (c) => {
 app.get('/api/v1/filings', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { results } = await c.env.DB.prepare(
             'SELECT * FROM filings WHERE tenant_id = ? ORDER BY created_at DESC'
         ).bind(tenantId).all()
@@ -355,10 +343,6 @@ app.get('/api/v1/filings', async (c) => {
 app.post('/api/v1/filings', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { period, country, total_net, total_vat, total_gross, transaction_count, status } = await c.req.json()
         if (!period) {
             return c.json({ error: '缺少必填字段' }, 400)
@@ -378,10 +362,6 @@ app.post('/api/v1/filings', async (c) => {
 app.get('/api/v1/vat-profiles', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { results } = await c.env.DB.prepare(
             'SELECT * FROM vat_profiles WHERE tenant_id = ?'
         ).bind(tenantId).all()
@@ -394,10 +374,6 @@ app.get('/api/v1/vat-profiles', async (c) => {
 app.post('/api/v1/vat-profiles', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { vat_number, country, company_name, company_address, tax_rate, is_default } = await c.req.json()
         if (!vat_number || !country) {
             return c.json({ error: '缺少必填字段' }, 400)
@@ -417,10 +393,6 @@ app.post('/api/v1/vat-profiles', async (c) => {
 app.get('/api/v1/transactions', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const country = c.req.query('country');
         const platform = c.req.query('platform');
         const status = c.req.query('status');
@@ -448,10 +420,6 @@ app.get('/api/v1/transactions', async (c) => {
 app.post('/api/v1/transactions', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity } = await c.req.json()
         if (!order_id) {
             return c.json({ error: '缺少必填字段' }, 400)
@@ -471,10 +439,6 @@ app.post('/api/v1/transactions', async (c) => {
 app.post('/api/v1/transactions/batch', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const transactions = await c.req.json();
         if (!transactions || !transactions.length) {
             return c.json({ error: '没有数据' }, 400);
@@ -519,10 +483,6 @@ app.post('/api/v1/transactions/batch', async (c) => {
 app.get('/api/v1/transactions/stats', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const { results } = await c.env.DB.prepare(
             `SELECT 
                 COUNT(*) as total,
@@ -581,7 +541,6 @@ app.get('/api/v1/settings', async (c) => {
         
         const { results } = await c.env.DB.prepare(query).bind(...params).all()
         
-        // 合并为对象
         const settings = {};
         results.forEach(row => {
             settings[row.setting_key] = row.setting_value;
@@ -596,10 +555,6 @@ app.get('/api/v1/settings', async (c) => {
 app.post('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { key, value } = await c.req.json()
         if (!key) {
             return c.json({ error: '缺少设置键' }, 400)
@@ -621,9 +576,6 @@ app.post('/api/v1/settings', async (c) => {
 app.get('/api/v1/dashboard', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
 
         const filingsCount = await c.env.DB.prepare(
             'SELECT COUNT(*) as count FROM filings WHERE tenant_id = ?'
@@ -659,10 +611,6 @@ app.get('/api/v1/dashboard', async (c) => {
 app.get('/api/v1/reports', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const { results } = await c.env.DB.prepare(
             'SELECT * FROM filings WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 10'
         ).bind(tenantId).all();
@@ -676,10 +624,6 @@ app.get('/api/v1/reports', async (c) => {
 app.post('/api/v1/reports/generate', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const { transactionIds, filters } = await c.req.json();
         
         let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
@@ -843,10 +787,6 @@ app.post('/api/v1/tax/validate', async (c) => {
 app.post('/api/v1/tax/validate-batch', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-        
         const { transactionIds } = await c.req.json();
         const { results } = await c.env.DB.prepare(
             `SELECT * FROM transactions WHERE tenant_id = ? AND id IN (${transactionIds.map(() => '?').join(',')})`
@@ -963,10 +903,6 @@ app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
 app.post('/api/v1/files/upload', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const body = await c.req.parseBody();
         const files = body['files'];
         const country = body['country'] || 'GB';
@@ -1045,10 +981,6 @@ app.post('/api/v1/files/upload', async (c) => {
 app.get('/api/v1/files', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const country = c.req.query('country');
         const platform = c.req.query('platform');
         const year = c.req.query('year');
@@ -1077,13 +1009,8 @@ app.get('/api/v1/files', async (c) => {
 app.delete('/api/v1/files/:id', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        if (!tenantId) {
-            return c.json({ error: '缺少租户ID' }, 400)
-        }
-
         const id = c.req.param('id');
         
-        // 检查文件是否属于当前租户
         const file = await c.env.DB.prepare(
             'SELECT tenant_id FROM transactions WHERE id = ?'
         ).bind(id).first();

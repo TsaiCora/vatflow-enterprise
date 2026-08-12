@@ -23,7 +23,6 @@ import {
     Language as LanguageIcon,
     Storefront as StorefrontIcon
 } from '@mui/icons-material';
-import { dashboardAPI } from '../services/api';
 
 // ===== 完整国家列表（43个）=====
 const COUNTRIES = [
@@ -117,9 +116,28 @@ function Dashboard() {
         setLoading(true);
         setError(null);
         try {
-            const result = await dashboardAPI.getDashboard();
-            console.log('📊 Dashboard 原始数据:', result);
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
             
+            console.log('🔑 Token:', token ? '存在' : '不存在');
+            console.log('🏢 Tenant ID:', tenantId);
+
+            const response = await fetch('https://api.vatapex.com/api/v1/dashboard', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || ''
+                }
+            });
+
+            console.log('📊 响应状态:', response.status);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('📊 Dashboard 数据:', result);
+
             if (result && result.success) {
                 const rawData = result.data || {};
                 setData({
@@ -135,7 +153,7 @@ function Dashboard() {
             }
         } catch (err) {
             console.error('❌ 加载失败:', err);
-            setError('网络错误，请检查后端');
+            setError(err.message || '网络错误，请检查后端');
         } finally {
             setLoading(false);
         }
@@ -216,7 +234,6 @@ function Dashboard() {
                 />
             </Box>
 
-            {/* 统计卡片 */}
             <Grid container spacing={3}>
                 {stats.map((stat, index) => (
                     <Grid item xs={12} sm={6} md={3} key={index}>
@@ -253,7 +270,6 @@ function Dashboard() {
                 ))}
             </Grid>
 
-            {/* 支持的国家和平台 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
@@ -302,7 +318,6 @@ function Dashboard() {
                 </Grid>
             </Grid>
 
-            {/* 最近活动 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
