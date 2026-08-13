@@ -118,14 +118,17 @@ function Dashboard() {
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
-            
+            const userRole = localStorage.getItem('userRole') || 'user';
+
             console.log('🔑 Token:', token ? '存在' : '不存在');
             console.log('🏢 Tenant ID:', tenantId);
+            console.log('👤 User Role:', userRole);
 
             const response = await fetch('https://api.vatapex.com/api/v1/dashboard', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId || ''
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
                 }
             });
 
@@ -223,6 +226,7 @@ function Dashboard() {
 
     return (
         <Box sx={{ p: 3 }}>
+            {/* 页面标题 */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     📊 概览看板
@@ -234,6 +238,7 @@ function Dashboard() {
                 />
             </Box>
 
+            {/* 统计卡片 */}
             <Grid container spacing={3}>
                 {stats.map((stat, index) => (
                     <Grid item xs={12} sm={6} md={3} key={index}>
@@ -270,7 +275,9 @@ function Dashboard() {
                 ))}
             </Grid>
 
+            {/* 支持的国家和平台 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
+                {/* 支持的国家 */}
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -294,6 +301,7 @@ function Dashboard() {
                     </Paper>
                 </Grid>
 
+                {/* 支持的平台 */}
                 <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -318,6 +326,7 @@ function Dashboard() {
                 </Grid>
             </Grid>
 
+            {/* 最近活动 */}
             <Grid container spacing={3} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
                     <Paper sx={{ p: 3, borderRadius: 2 }}>
