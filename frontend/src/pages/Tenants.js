@@ -35,9 +35,6 @@ import {
     Add as AddIcon,
     Edit as EditIcon,
     Delete as DeleteIcon,
-    CheckCircle as CheckCircleIcon,
-    Cancel as CancelIcon,
-    Business as BusinessIcon,
     Close as CloseIcon
 } from '@mui/icons-material';
 
@@ -56,7 +53,7 @@ function Tenants() {
         company: '',
         country: 'GB',
         vat_number: '',
-        role: 'admin'
+        role: 'user'
     });
 
     const COUNTRIES = [
@@ -74,22 +71,27 @@ function Tenants() {
         { code: 'US', name: '美国' },
         { code: 'CA', name: '加拿大' },
         { code: 'AU', name: '澳大利亚' },
+        { code: 'CN', name: '中国' },
     ];
 
+    // ===== 加载租户列表 =====
     const loadData = async () => {
         setLoading(true);
         setError(null);
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
-            
+            const userRole = localStorage.getItem('userRole') || 'user';
+
             console.log('🔑 Token:', token ? '存在' : '不存在');
             console.log('🏢 Tenant ID:', tenantId);
+            console.log('👤 User Role:', userRole);
 
             const response = await fetch('https://api.vatapex.com/api/v1/tenants', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId || ''
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
                 }
             });
 
@@ -121,6 +123,7 @@ function Tenants() {
         loadData();
     }, []);
 
+    // ===== 打开创建弹窗 =====
     const handleOpenCreate = () => {
         setIsEditing(false);
         setFormData({
@@ -131,11 +134,12 @@ function Tenants() {
             company: '',
             country: 'GB',
             vat_number: '',
-            role: 'admin'
+            role: 'user'
         });
         setOpenDialog(true);
     };
 
+    // ===== 打开编辑弹窗 =====
     const handleOpenEdit = (tenant) => {
         setIsEditing(true);
         setFormData({
@@ -151,6 +155,7 @@ function Tenants() {
         setOpenDialog(true);
     };
 
+    // ===== 保存租户 =====
     const handleSave = async () => {
         if (!formData.tenant_id || !formData.name || !formData.email) {
             setSnackbar({ open: true, message: '请填写必填字段', severity: 'warning' });
@@ -168,6 +173,7 @@ function Tenants() {
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
             
             let url = 'https://api.vatapex.com/api/v1/tenants';
             let method = 'POST';
@@ -185,7 +191,8 @@ function Tenants() {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId || ''
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
                 },
                 body: JSON.stringify(body)
             });
@@ -220,6 +227,7 @@ function Tenants() {
         }
     };
 
+    // ===== 删除租户 =====
     const handleDelete = async (tenantId) => {
         if (!confirm('确定要删除这个租户吗？')) return;
         
@@ -227,12 +235,14 @@ function Tenants() {
         try {
             const token = localStorage.getItem('token');
             const tenantIdCurrent = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
             
             const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${tenantId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantIdCurrent || ''
+                    'X-Tenant-ID': tenantIdCurrent || '',
+                    'X-User-Role': userRole
                 }
             });
 
@@ -240,6 +250,8 @@ function Tenants() {
             if (result && result.success) {
                 setSnackbar({ open: true, message: '✅ 租户删除成功', severity: 'success' });
                 loadData();
+            } else {
+                setSnackbar({ open: true, message: result?.error || '删除失败', severity: 'error' });
             }
         } catch (err) {
             setSnackbar({ open: true, message: '删除失败', severity: 'error' });
@@ -248,6 +260,7 @@ function Tenants() {
         }
     };
 
+    // ===== 状态芯片 =====
     const getStatusChip = (status) => {
         const config = {
             active: { label: '活跃', color: 'success' },
@@ -257,8 +270,17 @@ function Tenants() {
         return <Chip label={c.label} color={c.color} size="small" />;
     };
 
+    // ===== 角色芯片 =====
+    const getRoleChip = (role) => {
+        if (role === 'admin') {
+            return <Chip label="管理员" size="small" color="primary" />;
+        }
+        return <Chip label="用户" size="small" color="default" />;
+    };
+
     return (
         <Box sx={{ p: 3 }}>
+            {/* ===== 页面标题 ===== */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     🏢 客户管理
@@ -283,12 +305,14 @@ function Tenants() {
                 </Box>
             </Box>
 
+            {/* ===== 错误提示 ===== */}
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
                     {error}
                 </Alert>
             )}
 
+            {/* ===== 统计卡片 ===== */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={4}>
                     <Card>
@@ -320,6 +344,7 @@ function Tenants() {
                 </Grid>
             </Grid>
 
+            {/* ===== 租户列表 ===== */}
             <TableContainer component={Paper}>
                 <Table>
                     <TableHead>
@@ -357,16 +382,10 @@ function Tenants() {
                                     <TableCell>{item.name}</TableCell>
                                     <TableCell>{item.company || '-'}</TableCell>
                                     <TableCell>{item.email}</TableCell>
-                                    <TableCell>{item.country}</TableCell>
-                                    <TableCell>
-                                        <Chip 
-                                            label={item.role === 'admin' ? '管理员' : '用户'} 
-                                            size="small"
-                                            color={item.role === 'admin' ? 'primary' : 'default'}
-                                        />
-                                    </TableCell>
+                                    <TableCell>{item.country || '-'}</TableCell>
+                                    <TableCell>{getRoleChip(item.role)}</TableCell>
                                     <TableCell>{getStatusChip(item.status)}</TableCell>
-                                    <TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell>
+                                    <TableCell>{item.created_at ? new Date(item.created_at).toLocaleDateString() : '-'}</TableCell>
                                     <TableCell align="center">
                                         <Tooltip title="编辑">
                                             <IconButton size="small" onClick={() => handleOpenEdit(item)}>
@@ -386,6 +405,7 @@ function Tenants() {
                 </Table>
             </TableContainer>
 
+            {/* ===== 创建/编辑弹窗 ===== */}
             <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -477,6 +497,7 @@ function Tenants() {
                 </DialogActions>
             </Dialog>
 
+            {/* ===== Snackbar ===== */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}
