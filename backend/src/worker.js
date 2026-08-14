@@ -664,11 +664,9 @@ app.get('/api/v1/settings/:key', async (c) => {
     }
 });
 
-// =============================================
 // ===== 通知设置接口 =====
-// =============================================
 
-// ===== 获取通知设置 =====
+// ===== 获取通知设置（移除短信） =====
 app.get('/api/v1/settings/notifications', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -679,11 +677,7 @@ app.get('/api/v1/settings/notifications', async (c) => {
         
         const defaultSettings = {
             emailNotifications: false,
-            smsNotifications: false,
-            pushNotifications: false,
-            orderNotifications: false,
-            taxReminderNotifications: false,
-            reportReadyNotifications: false
+            pushNotifications: false
         };
         
         if (result && result.setting_value) {
@@ -705,7 +699,7 @@ app.get('/api/v1/settings/notifications', async (c) => {
     }
 });
 
-// ===== 保存通知设置 =====
+// ===== 保存通知设置（移除短信） =====
 app.post('/api/v1/settings/notifications', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -729,19 +723,18 @@ app.post('/api/v1/settings/notifications', async (c) => {
     }
 });
 
-// ===== 发送测试通知 =====
+// ===== 发送测试通知（移除短信） =====
 app.post('/api/v1/notifications/test', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        const { email, phone } = await c.req.json();
+        const { email } = await c.req.json();
         
-        // 获取用户信息（只查询存在的列）
+        // 获取用户信息
         const user = await c.env.DB.prepare(
             'SELECT email FROM tenants WHERE tenant_id = ?'
         ).bind(tenantId).first();
         
         const toEmail = email || user?.email || 'admin@vatflow.com';
-        const toPhone = phone || '+861234567890';
         
         // 获取通知设置
         const settingsResult = await c.env.DB.prepare(
@@ -750,7 +743,6 @@ app.post('/api/v1/notifications/test', async (c) => {
         
         let settings = {
             emailNotifications: false,
-            smsNotifications: false,
             pushNotifications: false
         };
         
@@ -766,12 +758,6 @@ app.post('/api/v1/notifications/test', async (c) => {
                 sent: false,
                 to: toEmail,
                 message: settings.emailNotifications ? '邮件已发送' : '邮件通知未开启'
-            },
-            sms: {
-                enabled: settings.smsNotifications,
-                sent: false,
-                to: toPhone,
-                message: settings.smsNotifications ? '短信已发送' : '短信通知未开启'
             },
             push: {
                 enabled: settings.pushNotifications,
@@ -818,42 +804,6 @@ app.post('/api/v1/notifications/test', async (c) => {
                 }
             } catch (emailError) {
                 results.email.message = '❌ 邮件发送失败: ' + emailError.message;
-            }
-        }
-        
-        // 如果开启了短信通知
-        if (settings.smsNotifications) {
-            try {
-                const twilioAccountSid = c.env.TWILIO_ACCOUNT_SID;
-                const twilioAuthToken = c.env.TWILIO_AUTH_TOKEN;
-                const twilioFromNumber = c.env.TWILIO_FROM_NUMBER;
-                
-                if (twilioAccountSid && twilioAuthToken && twilioFromNumber) {
-                    const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
-                    const smsResult = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'Authorization': `Basic ${auth}`
-                        },
-                        body: new URLSearchParams({
-                            To: toPhone,
-                            From: twilioFromNumber,
-                            Body: '🧪 VATFlow 测试通知：如果您收到此短信，说明短信通知功能配置正确。'
-                        })
-                    });
-                    
-                    if (smsResult.ok) {
-                        results.sms.sent = true;
-                        results.sms.message = '✅ 测试短信已发送';
-                    } else {
-                        results.sms.message = '❌ 短信发送失败: ' + smsResult.status;
-                    }
-                } else {
-                    results.sms.message = '⚠️ 短信服务未配置 (缺少 Twilio 凭证)';
-                }
-            } catch (smsError) {
-                results.sms.message = '❌ 短信发送失败: ' + smsError.message;
             }
         }
         

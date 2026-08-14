@@ -41,7 +41,6 @@ function Settings() {
         defaultCountry: 'GB',
         autoValidate: false,
         emailNotifications: false,
-        smsNotifications: false,
         pushNotifications: false,
         language: 'zh-CN',
         timezone: 'UTC+8',
@@ -83,7 +82,6 @@ function Settings() {
                     defaultCountry: 'GB',
                     autoValidate: false,
                     emailNotifications: false,
-                    smsNotifications: false,
                     pushNotifications: false,
                     language: 'zh-CN',
                     timezone: 'UTC+8',
@@ -104,7 +102,6 @@ function Settings() {
                     maintenanceMode: data.maintenanceMode === true || data.maintenanceMode === 'true',
                     autoValidate: data.autoValidate === true || data.autoValidate === 'true',
                     emailNotifications: data.emailNotifications === true || data.emailNotifications === 'true',
-                    smsNotifications: data.smsNotifications === true || data.smsNotifications === 'true',
                     pushNotifications: data.pushNotifications === true || data.pushNotifications === 'true'
                 }));
             } else {
@@ -117,7 +114,6 @@ function Settings() {
                     defaultCountry: 'GB',
                     autoValidate: false,
                     emailNotifications: false,
-                    smsNotifications: false,
                     pushNotifications: false,
                     language: 'zh-CN',
                     timezone: 'UTC+8',
@@ -136,7 +132,6 @@ function Settings() {
                 defaultCountry: 'GB',
                 autoValidate: false,
                 emailNotifications: false,
-                smsNotifications: false,
                 pushNotifications: false,
                 language: 'zh-CN',
                 timezone: 'UTC+8',
@@ -218,8 +213,7 @@ function Settings() {
                     'X-User-Role': userRole
                 },
                 body: JSON.stringify({
-                    email: 'admin@vatflow.com',
-                    phone: '+861234567890'
+                    email: 'admin@vatflow.com'
                 })
             });
 
@@ -231,7 +225,6 @@ function Settings() {
                 let message = '📨 测试通知已发送: ';
                 const parts = [];
                 if (results.email?.sent) parts.push('📧 邮件已发送');
-                if (results.sms?.sent) parts.push('📱 短信已发送');
                 if (results.push?.sent) parts.push('🔔 推送已发送');
                 message += parts.join(', ') || '请检查通知设置';
 
@@ -287,7 +280,6 @@ function Settings() {
                 defaultCountry: 'GB',
                 autoValidate: false,
                 emailNotifications: false,
-                smsNotifications: false,
                 pushNotifications: false,
                 language: 'zh-CN',
                 timezone: 'UTC+8',
@@ -503,14 +495,14 @@ function Settings() {
                     </Paper>
                 </Grid>
 
-                {/* ===== 通知设置 ===== */}
+                {/* ===== 通知设置（移除短信） ===== */}
                 <Grid item xs={12}>
                     <Paper sx={{ p: 3 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
                             🔔 通知设置
                         </Typography>
                         <Grid container spacing={3}>
-                            <Grid item xs={12} md={4}>
+                            <Grid item xs={12} md={6}>
                                 <FormControlLabel
                                     control={
                                         <Switch
@@ -529,26 +521,7 @@ function Settings() {
                                     }
                                 />
                             </Grid>
-                            <Grid item xs={12} md={4}>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={settings.smsNotifications}
-                                            onChange={() => handleToggle('smsNotifications')}
-                                            color="primary"
-                                        />
-                                    }
-                                    label={
-                                        <Box>
-                                            <Typography variant="body2">📱 短信通知</Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {settings.smsNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
-                                            </Typography>
-                                        </Box>
-                                    }
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={4}>
+                            <Grid item xs={12} md={6}>
                                 <FormControlLabel
                                     control={
                                         <Switch
