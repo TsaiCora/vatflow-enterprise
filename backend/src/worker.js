@@ -2,7 +2,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import * as bcrypt from 'bcryptjs'
-
+import { buildPushHTTPRequest } from '@pushforge/builder';
 const app = new Hono()
 app.use('*', cors())
 
@@ -1451,6 +1451,151 @@ app.delete('/api/v1/files/:id', async (c) => {
         await c.env.DB.prepare('DELETE FROM transactions WHERE tenant_id = ? AND id = ?').bind(tenantId, id).run();
         return c.json({ success: true, message: '删除成功' });
     } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// =============================================
+// ===== 推送订阅接口 =====
+// =============================================
+
+// 保存推送订阅
+app.post('/api/v1/push/subscribe', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const subscription = await c.req.json();
+
+        if (!subscription || !subscription.endpoint) {
+            return c.json({ error: '无效的订阅信息' }, 400);
+        }
+
+        await c.env.DB.prepare(
+            `INSERT INTO push_subscriptions (tenant_id, endpoint, keys, created_at) 
+             VALUES (?, ?, ?, datetime("now")) 
+             ON CONFLICT(tenant_id, endpoint) DO UPDATE SET keys = ?, updated_at = datetime("now")`
+        ).bind(
+            tenantId,
+            subscription.endpoint,
+            JSON.stringify(subscription.keys),
+            JSON.stringify(subscription.keys)
+        ).run();
+
+        return c.json({
+            success: true,
+            message: '订阅成功'
+        });
+    } catch (error) {
+        console.error('❌ 订阅保存失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// 取消订阅
+app.post('/api/v1/push/unsubscribe', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const { endpoint } = await c.req.json();
+
+        if (!endpoint) {
+            return c.json({ error: '缺少 endpoint' }, 400);
+        }
+
+        await c.env.DB.prepare(
+            'DELETE FROM push_subscriptions WHERE tenant_id = ? AND endpoint = ?'
+        ).bind(tenantId, endpoint).run();
+
+        return c.json({
+            success: true,
+            message: '取消订阅成功'
+        });
+    } catch (error) {
+        console.error('❌ 取消订阅失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// 发送测试推送
+app.post('/api/v1/push/test', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+
+        const { results } = await c.env.DB.prepare(
+            'SELECT endpoint, keys FROM push_subscriptions WHERE tenant_id = ?'
+        ).bind(tenantId).all();
+
+        if (!results || results.length === 0) {
+            return c.json({
+                success: false,
+                message: '没有订阅用户',
+                data: { sent: 0 }
+            });
+        }
+
+        const vapidPrivateKey = c.env.VAPID_PRIVATE_KEY;
+        if (!vapidPrivateKey) {
+            return c.json({
+                success: false,
+                message: 'VAPID_PRIVATE_KEY 未配置'
+            }, 500);
+        }
+
+        let sent = 0;
+        let failed = 0;
+
+        for (const sub of results) {
+            try {
+                const subscription = {
+                    endpoint: sub.endpoint,
+                    keys: JSON.parse(sub.keys)
+                };
+
+                const { endpoint, headers, body } = await buildPushHTTPRequest({
+                    privateJWK: vapidPrivateKey,
+                    subscription: subscription,
+                    message: {
+                        payload: {
+                            title: '🧪 测试推送',
+                            body: `这是来自 VATFlow 的测试推送通知！时间: ${new Date().toLocaleString()}`,
+                            icon: '/favicon.ico',
+                            url: '/dashboard'
+                        },
+                        adminContact: 'mailto:admin@vatapex.com',
+                        options: {
+                            urgency: 'high',
+                            ttl: 3600
+                        }
+                    }
+                });
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers,
+                    body
+                });
+
+                if (response.ok) {
+                    sent++;
+                } else {
+                    failed++;
+                    if (response.status === 410) {
+                        await c.env.DB.prepare(
+                            'DELETE FROM push_subscriptions WHERE tenant_id = ? AND endpoint = ?'
+                        ).bind(tenantId, sub.endpoint).run();
+                    }
+                }
+            } catch (err) {
+                console.error('❌ 推送发送失败:', err);
+                failed++;
+            }
+        }
+
+        return c.json({
+            success: true,
+            message: '推送测试完成',
+            data: { sent, failed, total: results.length }
+        });
+    } catch (error) {
+        console.error('❌ 测试推送失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
