@@ -953,6 +953,66 @@ app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
 })
 
 // =============================================
+// ===== 平台配置 =====
+// =============================================
+const PLATFORM_CONFIG = {
+    amazon: { countryMode: 'auto', defaultCountry: null },
+    ebay: { countryMode: 'auto', defaultCountry: null },
+    aliexpress: { countryMode: 'auto', defaultCountry: null },
+    etsy: { countryMode: 'auto', defaultCountry: null },
+    wish: { countryMode: 'auto', defaultCountry: null },
+    temu: { countryMode: 'auto', defaultCountry: null },
+    shein: { countryMode: 'auto', defaultCountry: null },
+    depop: { countryMode: 'auto', defaultCountry: null },
+    zalando: { countryMode: 'auto', defaultCountry: null },
+    tiktok: { countryMode: 'auto', defaultCountry: null },
+    lazada: { countryMode: 'auto', defaultCountry: null },
+    shopee: { countryMode: 'auto', defaultCountry: null },
+    shopify: { countryMode: 'manual', defaultCountry: 'GB' },
+    walmart: { countryMode: 'manual', defaultCountry: 'US' },
+    target: { countryMode: 'manual', defaultCountry: 'US' },
+    allegro: { countryMode: 'manual', defaultCountry: 'PL' },
+    rakuten: { countryMode: 'manual', defaultCountry: 'JP' },
+    yahoo: { countryMode: 'manual', defaultCountry: 'JP' },
+    mercari: { countryMode: 'manual', defaultCountry: 'JP' },
+    poshmark: { countryMode: 'manual', defaultCountry: 'US' },
+    pva: { countryMode: 'manual', defaultCountry: 'GB' },
+};
+
+// =============================================
+// ===== 国家映射表 =====
+// =============================================
+const COUNTRY_MAP = {
+    'UK': 'GB', 'UNITED KINGDOM': 'GB', 'GB': 'GB',
+    'FRANCE': 'FR', 'FR': 'FR',
+    'GERMANY': 'DE', 'DE': 'DE',
+    'ITALY': 'IT', 'IT': 'IT',
+    'SPAIN': 'ES', 'ES': 'ES',
+    'NETHERLANDS': 'NL', 'NL': 'NL',
+    'BELGIUM': 'BE', 'BE': 'BE',
+    'POLAND': 'PL', 'PL': 'PL',
+    'SWEDEN': 'SE', 'SE': 'SE',
+    'DENMARK': 'DK', 'DK': 'DK',
+    'FINLAND': 'FI', 'FI': 'FI',
+    'IRELAND': 'IE', 'IE': 'IE',
+    'PORTUGAL': 'PT', 'PT': 'PT',
+    'AUSTRIA': 'AT', 'AT': 'AT',
+    'NORWAY': 'NO', 'NO': 'NO',
+    'SWITZERLAND': 'CH', 'CH': 'CH',
+    'JAPAN': 'JP', 'JAPAN': 'JP',
+    'SINGAPORE': 'SG', 'SG': 'SG',
+    'MALAYSIA': 'MY', 'MY': 'MY',
+    'THAILAND': 'TH', 'TH': 'TH',
+    'VIETNAM': 'VN', 'VN': 'VN',
+    'INDONESIA': 'ID', 'ID': 'ID',
+    'PHILIPPINES': 'PH', 'PH': 'PH',
+    'USA': 'US', 'UNITED STATES': 'US', 'US': 'US',
+    'CANADA': 'CA', 'CA': 'CA',
+    'AUSTRALIA': 'AU', 'AU': 'AU',
+    'NEW ZEALAND': 'NZ', 'NZ': 'NZ'
+};
+
+// =============================================
 // ===== 文件上传接口 =====
 // =============================================
 app.post('/api/v1/files/upload', async (c) => {
@@ -960,43 +1020,115 @@ app.post('/api/v1/files/upload', async (c) => {
         const tenantId = getTenantId(c);
         const body = await c.req.parseBody();
         const files = body['files'];
-        const country = body['country'] || 'GB';
         const platform = body['platform'] || 'amazon';
         const year = body['year'] || new Date().getFullYear().toString();
         const month = body['month'] || '01';
+        const userCountry = body['country'] || 'GB';
 
         if (!files) {
             return c.json({ error: '没有文件' }, 400);
         }
 
+        const platformConfig = PLATFORM_CONFIG[platform] || { countryMode: 'manual', defaultCountry: 'GB' };
+        const isAutoCountry = platformConfig.countryMode === 'auto';
+
         const fileArray = Array.isArray(files) ? files : [files];
         const transactions = [];
+        const countrySummary = {};
 
         for (const file of fileArray) {
             const content = await file.text();
             const lines = content.split('\n').filter(line => line.trim());
+            
+            if (lines.length < 2) continue;
+
+            const header = lines[0]?.split(',') || [];
+            const countryIndex = header.findIndex(h => 
+                h.toLowerCase().includes('country') || 
+                h.toLowerCase().includes('nation') ||
+                h.toLowerCase().includes('marketplace') ||
+                h.toLowerCase().includes('ship_country')
+            );
+            const vatIndex = header.findIndex(h => 
+                h.toLowerCase().includes('vat') || 
+                h.toLowerCase().includes('tax')
+            );
+            const amountIndex = header.findIndex(h => 
+                h.toLowerCase().includes('amount') || 
+                h.toLowerCase().includes('total') ||
+                h.toLowerCase().includes('price') ||
+                h.toLowerCase().includes('net')
+            );
+            const orderIdIndex = header.findIndex(h => 
+                h.toLowerCase().includes('order') || 
+                h.toLowerCase().includes('id') ||
+                h.toLowerCase().includes('transaction') ||
+                h.toLowerCase().includes('ref')
+            );
+
             for (let i = 1; i < lines.length; i++) {
                 const parts = lines[i].split(',');
-                if (parts.length >= 3) {
-                    const netAmount = parseFloat(parts[1]) || 0;
-                    const vatAmount = parseFloat(parts[2]) || 0;
-                    transactions.push({
-                        tenant_id: tenantId,
-                        order_id: parts[0] || `ORD-${Date.now()}-${i}`,
-                        order_date: new Date().toISOString().split('T')[0],
-                        country: country,
-                        vat_number: `VAT-${country}${Date.now()}`,
-                        net_amount: netAmount,
-                        vat_amount: vatAmount,
-                        gross_amount: netAmount + vatAmount,
-                        tax_rate: TAX_RATES[country] || 20,
-                        period: `${year}-${month}`,
-                        platform: platform,
-                        status: 'pending',
-                        product_sku: parts[3] || '',
-                        quantity: parseInt(parts[4]) || 1
-                    });
+                if (parts.length < 2) continue;
+                
+                let country = userCountry;
+                if (isAutoCountry && countryIndex >= 0 && parts[countryIndex]) {
+                    const detectedCountry = parts[countryIndex].trim().toUpperCase();
+                    country = COUNTRY_MAP[detectedCountry] || detectedCountry;
                 }
+
+                if (!TAX_RATES[country]) {
+                    country = userCountry;
+                }
+
+                const orderId = orderIdIndex >= 0 && parts[orderIdIndex] 
+                    ? parts[orderIdIndex].trim() 
+                    : `ORD-${Date.now()}-${i}`;
+                
+                let netAmount = 0;
+                let vatAmount = 0;
+                let grossAmount = 0;
+                
+                if (amountIndex >= 0 && parts[amountIndex]) {
+                    const rawAmount = parseFloat(parts[amountIndex].replace(/[^0-9.-]/g, '')) || 0;
+                    
+                    if (vatIndex >= 0 && parts[vatIndex]) {
+                        vatAmount = parseFloat(parts[vatIndex].replace(/[^0-9.-]/g, '')) || 0;
+                        netAmount = rawAmount - vatAmount;
+                    } else {
+                        const taxRate = TAX_RATES[country] || 20;
+                        netAmount = rawAmount;
+                        vatAmount = netAmount * (taxRate / 100);
+                    }
+                    grossAmount = netAmount + vatAmount;
+                }
+
+                if (netAmount === 0 && vatAmount === 0) continue;
+
+                const transaction = {
+                    tenant_id: tenantId,
+                    order_id: orderId,
+                    order_date: new Date().toISOString().split('T')[0],
+                    country: country,
+                    vat_number: '',
+                    net_amount: netAmount,
+                    vat_amount: vatAmount,
+                    gross_amount: grossAmount,
+                    tax_rate: TAX_RATES[country] || 20,
+                    period: `${year}-${month}`,
+                    platform: platform,
+                    status: 'pending',
+                    product_sku: '',
+                    quantity: 1
+                };
+                transactions.push(transaction);
+
+                if (!countrySummary[country]) {
+                    countrySummary[country] = { count: 0, net: 0, vat: 0, gross: 0 };
+                }
+                countrySummary[country].count++;
+                countrySummary[country].net += netAmount;
+                countrySummary[country].vat += vatAmount;
+                countrySummary[country].gross += grossAmount;
             }
         }
 
@@ -1021,17 +1153,19 @@ app.post('/api/v1/files/upload', async (c) => {
             message: `上传成功，解析 ${transactions.length} 条记录，保存 ${created} 条`,
             data: {
                 processed: transactions.length,
-                saved: created
+                saved: created,
+                countries: countrySummary,
+                transactions: transactions
             }
-        })
+        });
     } catch (error) {
         console.error('❌ 文件上传错误:', error);
-        return c.json({ error: error.message }, 500)
+        return c.json({ error: error.message }, 500);
     }
-})
+});
 
 // =============================================
-// ===== 获取文件列表（权限控制） =====
+// ===== 获取文件列表 =====
 // =============================================
 app.get('/api/v1/files', async (c) => {
     try {
@@ -1060,11 +1194,11 @@ app.get('/api/v1/files', async (c) => {
         query += ' ORDER BY created_at DESC LIMIT 1000';
         const { results } = await c.env.DB.prepare(query).bind(...params).all();
 
-        return c.json({ success: true, data: results, total: results.length })
+        return c.json({ success: true, data: results, total: results.length });
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        return c.json({ error: error.message }, 500);
     }
-})
+});
 
 // =============================================
 // ===== 删除文件/交易 =====
@@ -1087,12 +1221,11 @@ app.delete('/api/v1/files/:id', async (c) => {
         }
         
         await c.env.DB.prepare('DELETE FROM transactions WHERE tenant_id = ? AND id = ?').bind(tenantId, id).run();
-        return c.json({ success: true, message: '删除成功' })
+        return c.json({ success: true, message: '删除成功' });
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        return c.json({ error: error.message }, 500);
     }
-})
-
+});
 // =============================================
 // ===== 404 =====
 // =============================================

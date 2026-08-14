@@ -49,7 +49,8 @@ import {
     Timeline as TimelineIcon,
     Receipt as ReceiptIcon,
     GetApp as DownloadIcon,
-    Close as CloseIcon
+    Close as CloseIcon,
+    Info as InfoIcon
 } from '@mui/icons-material';
 import { fileAPI, tenantAPI, transactionAPI, taxAPI, reportAPI } from '../services/api';
 
@@ -125,6 +126,33 @@ const COUNTRIES = [
     { code: 'TR', name: '土耳其', flag: '🇹🇷', taxRate: 18 },
 ];
 
+// ===== 平台配置 =====
+const PLATFORM_CONFIG = {
+    // 多国家统一报表（自动识别国家）
+    amazon: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '支持欧洲站统一报表，自动识别订单国家' },
+    ebay: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据站点自动识别国家' },
+    aliexpress: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据订单中的国家字段自动识别' },
+    etsy: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据订单中的国家字段自动识别' },
+    wish: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据订单中的国家字段自动识别' },
+    temu: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据订单中的国家字段自动识别' },
+    shein: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据订单中的国家字段自动识别' },
+    depop: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据订单中的国家字段自动识别' },
+    zalando: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '欧洲多国数据，自动识别国家' },
+    tiktok: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '根据站点自动识别国家' },
+    lazada: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '支持新加坡、马来西亚、泰国、越南、菲律宾、印尼' },
+    shopee: { countryMode: 'auto', multiCountry: true, defaultCountry: null, note: '支持新加坡、马来西亚、泰国、越南、菲律宾、印尼、台湾' },
+    // 单国家平台
+    shopify: { countryMode: 'manual', multiCountry: false, defaultCountry: 'GB', note: '按店铺国家选择' },
+    walmart: { countryMode: 'manual', multiCountry: false, defaultCountry: 'US', note: '美国市场' },
+    target: { countryMode: 'manual', multiCountry: false, defaultCountry: 'US', note: '美国市场' },
+    allegro: { countryMode: 'manual', multiCountry: false, defaultCountry: 'PL', note: '波兰市场' },
+    rakuten: { countryMode: 'manual', multiCountry: false, defaultCountry: 'JP', note: '日本市场' },
+    yahoo: { countryMode: 'manual', multiCountry: false, defaultCountry: 'JP', note: '日本市场' },
+    mercari: { countryMode: 'manual', multiCountry: false, defaultCountry: 'JP', note: '日本市场' },
+    poshmark: { countryMode: 'manual', multiCountry: false, defaultCountry: 'US', note: '美国/加拿大市场' },
+    pva: { countryMode: 'manual', multiCountry: false, defaultCountry: 'GB', note: '通用格式，需选择国家' },
+};
+
 // ===== 年份和季度 =====
 const YEARS = ['2024', '2025', '2026', '2027', '2028'];
 const MONTHS = [
@@ -149,6 +177,11 @@ const QUARTERS = [
     { value: 'Q4', label: 'Q4 (10-12月)', months: ['10', '11', '12'] },
 ];
 
+// ===== 获取平台配置 =====
+const getPlatformConfig = (platformId) => {
+    return PLATFORM_CONFIG[platformId] || { countryMode: 'manual', multiCountry: false, defaultCountry: 'GB' };
+};
+
 function Upload() {
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -167,7 +200,6 @@ function Upload() {
     const [success, setSuccess] = useState(false);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [activeTab, setActiveTab] = useState(0);
-    const [autoProcessResult, setAutoProcessResult] = useState(null);
 
     // ===== 加载租户列表 =====
     useEffect(() => {
@@ -177,20 +209,56 @@ function Upload() {
 
     const loadTenants = async () => {
         try {
-            const result = await tenantAPI.getTenants();
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
+            
+            const response = await fetch('https://api.vatapex.com/api/v1/tenants', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const result = await response.json();
             console.log('📥 租户列表:', result);
+            
             if (result && result.success) {
                 setTenants(result.data || []);
+            } else {
+                setTenants([]);
             }
         } catch (err) {
             console.error('❌ 加载租户失败:', err);
+            setTenants([]);
         }
     };
 
     const loadUploadedFiles = async () => {
         setLoading(true);
         try {
-            const result = await fileAPI.getFiles();
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
+            
+            const response = await fetch('https://api.vatapex.com/api/v1/files', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const result = await response.json();
             if (result && result.success) {
                 setUploadedFiles(result.data || []);
             }
@@ -218,14 +286,27 @@ function Upload() {
         return platform ? `${platform.icon} ${platform.name}` : id;
     };
 
+    // ===== 获取平台配置 =====
+    const getPlatformConfig = (platformId) => {
+        return PLATFORM_CONFIG[platformId] || { countryMode: 'manual', multiCountry: false, defaultCountry: 'GB' };
+    };
+
     // ===== 处理文件上传 =====
     const handleFileUpload = async (event) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;
 
-        if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedMonth) {
-            setError('请选择客户、国家、平台、年份和月份');
+        if (!selectedTenant || !selectedPlatform || !selectedYear || !selectedMonth) {
+            setError('请选择客户、平台、年份和月份');
             setSnackbar({ open: true, message: '请完善上传信息', severity: 'warning' });
+            return;
+        }
+
+        // 如果是手动选择国家的平台，检查是否选择了国家
+        const platformConfig = getPlatformConfig(selectedPlatform);
+        if (platformConfig.countryMode === 'manual' && !selectedCountry) {
+            setError('请选择国家');
+            setSnackbar({ open: true, message: '请选择国家', severity: 'warning' });
             return;
         }
 
@@ -234,22 +315,30 @@ function Upload() {
         setUploadProgress(0);
 
         try {
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
+            
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) {
                 formData.append('files', files[i]);
             }
             formData.append('tenantId', selectedTenant);
-            formData.append('country', selectedCountry);
             formData.append('platform', selectedPlatform);
             formData.append('year', selectedYear);
             formData.append('month', selectedMonth);
+            
+            // 只有手动模式才传递国家
+            if (platformConfig.countryMode === 'manual') {
+                formData.append('country', selectedCountry);
+            }
 
-            // 使用原生 fetch 上传
-            const token = localStorage.getItem('token');
             const response = await fetch('https://api.vatapex.com/api/v1/files/upload', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
                 },
                 body: formData
             });
@@ -259,19 +348,18 @@ function Upload() {
             
             if (result && result.success) {
                 setSuccess(true);
+                const countries = result.data?.countries || {};
+                const countryList = Object.keys(countries).map(c => 
+                    `${getCountryInfo(c)?.flag || ''} ${c}: ${countries[c].count}条`
+                ).join(', ');
+                
                 setSnackbar({
                     open: true,
-                    message: `✅ 上传成功！已处理 ${result.data?.processed || 0} 条记录`,
+                    message: `✅ 上传成功！${result.data?.processed || 0} 条记录，${countryList || ''}`,
                     severity: 'success'
                 });
                 loadUploadedFiles();
                 event.target.value = '';
-                
-                // 自动处理：保存交易记录
-                if (result.data && result.data.transactions) {
-                    // 保存交易记录
-                    await saveTransactions(result.data.transactions);
-                }
             } else {
                 setError(result?.error || '上传失败');
                 setSnackbar({ open: true, message: result?.error || '上传失败', severity: 'error' });
@@ -286,36 +374,10 @@ function Upload() {
         }
     };
 
-    // ===== 保存交易记录 =====
-    const saveTransactions = async (transactions) => {
-        try {
-            const token = localStorage.getItem('token');
-            const response = await fetch('https://api.vatapex.com/api/v1/transactions/batch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(transactions)
-            });
-            const result = await response.json();
-            console.log('📥 保存交易记录结果:', result);
-            if (result && result.success) {
-                setSnackbar({
-                    open: true,
-                    message: `✅ 已保存 ${result.count} 条交易记录`,
-                    severity: 'success'
-                });
-            }
-        } catch (err) {
-            console.error('❌ 保存交易记录失败:', err);
-        }
-    };
-
     // ===== 执行季度核对 =====
     const handleQuarterCheck = async () => {
-        if (!selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedQuarter) {
-            setError('请选择客户、国家、平台、年份和季度');
+        if (!selectedTenant || !selectedPlatform || !selectedYear || !selectedQuarter) {
+            setError('请选择客户、平台、年份和季度');
             return;
         }
 
@@ -326,20 +388,25 @@ function Upload() {
         try {
             const quarterMonths = QUARTERS.find(q => q.value === selectedQuarter)?.months || [];
             
-            // 获取该季度所有月的数据
             const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
+            
             const responses = await Promise.all(
                 quarterMonths.map(async (month) => {
-                    const url = `https://api.vatapex.com/api/v1/files?tenantId=${selectedTenant}&country=${selectedCountry}&platform=${selectedPlatform}&year=${selectedYear}&month=${month}`;
+                    const url = `https://api.vatapex.com/api/v1/files?tenantId=${selectedTenant}&platform=${selectedPlatform}&year=${selectedYear}&month=${month}`;
                     const response = await fetch(url, {
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'X-Tenant-ID': tenantId || '',
+                            'X-User-Role': userRole
+                        }
                     });
                     const result = await response.json();
                     return { month, data: result };
                 })
             );
 
-            // 汇总数据
             const allData = responses.map(r => r.data?.data || []);
             const summary = generateQuarterSummary(allData);
 
@@ -358,8 +425,6 @@ function Upload() {
     const generateQuarterSummary = (data) => {
         let totalNet = 0, totalVAT = 0, totalGross = 0, totalOrders = 0;
         const monthsData = {};
-        const countryInfo = getCountryInfo(selectedCountry);
-        const taxRate = countryInfo?.taxRate || 20;
 
         data.forEach((monthData, index) => {
             const month = (index + 1).toString().padStart(2, '0');
@@ -383,24 +448,15 @@ function Upload() {
             totalOrders += monthOrders;
         });
 
-        const expectedVAT = totalNet * (taxRate / 100);
-        const vatDifference = totalVAT - expectedVAT;
-        const vatMatch = Math.abs(vatDifference) < 1;
-
         return {
             tenantId: selectedTenant,
             tenantName: getTenantName(selectedTenant),
-            country: selectedCountry,
-            countryName: countryInfo?.name || selectedCountry,
-            taxRate,
             platform: selectedPlatform,
             platformName: getPlatformName(selectedPlatform),
             year: selectedYear,
             quarter: selectedQuarter,
-            summary: { totalNet, totalVAT, totalGross, totalOrders, expectedVAT, vatDifference, vatMatch },
+            summary: { totalNet, totalVAT, totalGross, totalOrders },
             monthsData,
-            status: vatMatch ? '✅ 匹配' : '⚠️ 需复核',
-            recommendation: vatMatch ? '税务数据正常，可以申报' : `VAT差异 €${vatDifference.toFixed(2)}，建议复核数据`,
             recordCount: data.reduce((sum, d) => sum + (d?.length || 0), 0),
             generatedAt: new Date().toISOString()
         };
@@ -422,12 +478,27 @@ function Upload() {
     const handleDeleteFile = async (fileId) => {
         if (!confirm('确定要删除这个文件吗？')) return;
         try {
-            await fileAPI.deleteFile(fileId);
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
+            
+            await fetch(`https://api.vatapex.com/api/v1/files/${fileId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
+                }
+            });
             loadUploadedFiles();
         } catch (err) {
             setError('删除失败');
         }
     };
+
+    // ===== 获取平台配置 =====
+    const selectedPlatformConfig = getPlatformConfig(selectedPlatform);
+    const isAutoCountry = selectedPlatformConfig?.countryMode === 'auto';
 
     return (
         <Box sx={{ p: 3 }}>
@@ -479,23 +550,6 @@ function Upload() {
                                     </Grid>
                                     <Grid item xs={12} sm={6}>
                                         <FormControl fullWidth size="small">
-                                            <InputLabel>国家</InputLabel>
-                                            <Select
-                                                value={selectedCountry}
-                                                onChange={(e) => setSelectedCountry(e.target.value)}
-                                                label="国家"
-                                            >
-                                                <MenuItem value="">请选择国家</MenuItem>
-                                                {COUNTRIES.map((c) => (
-                                                    <MenuItem key={c.code} value={c.code}>
-                                                        {c.flag} {c.name} ({c.taxRate}%)
-                                                    </MenuItem>
-                                                ))}
-                                            </Select>
-                                        </FormControl>
-                                    </Grid>
-                                    <Grid item xs={12} sm={4}>
-                                        <FormControl fullWidth size="small">
                                             <InputLabel>平台</InputLabel>
                                             <Select
                                                 value={selectedPlatform}
@@ -540,13 +594,44 @@ function Upload() {
                                             </Select>
                                         </FormControl>
                                     </Grid>
+
+                                    {/* 国家选择（仅手动模式显示） */}
+                                    {!isAutoCountry && selectedPlatform && (
+                                        <Grid item xs={12} sm={4}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel>国家</InputLabel>
+                                                <Select
+                                                    value={selectedCountry}
+                                                    onChange={(e) => setSelectedCountry(e.target.value)}
+                                                    label="国家"
+                                                >
+                                                    <MenuItem value="">请选择国家</MenuItem>
+                                                    {COUNTRIES.map((c) => (
+                                                        <MenuItem key={c.code} value={c.code}>
+                                                            {c.flag} {c.name} ({c.taxRate}%)
+                                                        </MenuItem>
+                                                    ))}
+                                                </Select>
+                                            </FormControl>
+                                        </Grid>
+                                    )}
+
+                                    {/* 自动识别国家提示 */}
+                                    {isAutoCountry && selectedPlatform && (
+                                        <Grid item xs={12}>
+                                            <Alert severity="info" icon={<InfoIcon />}>
+                                                ℹ️ {selectedPlatformConfig?.note || '该平台支持自动识别订单国家'}
+                                            </Alert>
+                                        </Grid>
+                                    )}
+
                                     <Grid item xs={12}>
                                         <Button
                                             variant="contained"
                                             component="label"
                                             fullWidth
                                             startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
-                                            disabled={uploading || !selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedMonth}
+                                            disabled={uploading || !selectedTenant || !selectedPlatform || !selectedYear || !selectedMonth}
                                             sx={{ py: 2 }}
                                         >
                                             {uploading ? `上传中 ${uploadProgress}%` : '选择文件上传'}
@@ -586,23 +671,6 @@ function Upload() {
                                         </FormControl>
                                     </Grid>
                                     <Grid item xs={12} sm={6}>
-                                        <FormControl fullWidth size="small">
-                                            <InputLabel>国家</InputLabel>
-                                            <Select
-                                                value={selectedCountry}
-                                                onChange={(e) => setSelectedCountry(e.target.value)}
-                                                label="国家"
-                                            >
-                                                <MenuItem value="">请选择国家</MenuItem>
-                                                {COUNTRIES.map((c) => (
-                                                    <MenuItem key={c.code} value={c.code}>
-                                                        {c.flag} {c.name} ({c.taxRate}%)
-                                                    </MenuItem>
-                                                ))}
-                                            </Select>
-                                        </FormControl>
-                                    </Grid>
-                                    <Grid item xs={12} sm={4}>
                                         <FormControl fullWidth size="small">
                                             <InputLabel>平台</InputLabel>
                                             <Select
@@ -648,13 +716,30 @@ function Upload() {
                                             </Select>
                                         </FormControl>
                                     </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>国家（可选）</InputLabel>
+                                            <Select
+                                                value={selectedCountry}
+                                                onChange={(e) => setSelectedCountry(e.target.value)}
+                                                label="国家（可选）"
+                                            >
+                                                <MenuItem value="">全部国家</MenuItem>
+                                                {COUNTRIES.map((c) => (
+                                                    <MenuItem key={c.code} value={c.code}>
+                                                        {c.flag} {c.name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
                                     <Grid item xs={12}>
                                         <Button
                                             variant="contained"
                                             color="secondary"
                                             startIcon={loading ? <CircularProgress size={20} /> : <AssessmentIcon />}
                                             onClick={handleQuarterCheck}
-                                            disabled={loading || !selectedTenant || !selectedCountry || !selectedPlatform || !selectedYear || !selectedQuarter}
+                                            disabled={loading || !selectedTenant || !selectedPlatform || !selectedYear || !selectedQuarter}
                                             fullWidth
                                             sx={{ py: 1.5 }}
                                         >
@@ -694,6 +779,9 @@ function Upload() {
                                                 <TableCell>
                                                     <Typography variant="caption" display="block">{getTenantName(file.tenant_id)}</Typography>
                                                     <Chip label={getPlatformName(file.platform)} size="small" variant="outlined" sx={{ fontSize: 10 }} />
+                                                    {file.country && (
+                                                        <Chip label={file.country} size="small" variant="outlined" sx={{ fontSize: 10, ml: 0.5 }} />
+                                                    )}
                                                 </TableCell>
                                                 <TableCell align="right">
                                                     <Tooltip title="删除">
@@ -726,46 +814,21 @@ function Upload() {
                 <DialogContent>
                     {checkResult && (
                         <Box sx={{ pt: 1 }}>
-                            {/* 基本信息 */}
                             <Paper sx={{ p: 2, bgcolor: '#f5f5f5', mb: 2 }}>
                                 <Grid container spacing={2}>
                                     <Grid item xs={6}><Typography variant="caption" color="text.secondary">客户</Typography><Typography variant="body2">{checkResult.tenantName}</Typography></Grid>
-                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">国家</Typography><Typography variant="body2">{checkResult.countryName} ({checkResult.taxRate}%)</Typography></Grid>
                                     <Grid item xs={6}><Typography variant="caption" color="text.secondary">平台</Typography><Typography variant="body2">{checkResult.platformName}</Typography></Grid>
                                     <Grid item xs={6}><Typography variant="caption" color="text.secondary">期间</Typography><Typography variant="body2">{checkResult.year} {checkResult.quarter}</Typography></Grid>
+                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">记录数</Typography><Typography variant="body2">{checkResult.recordCount} 条</Typography></Grid>
                                 </Grid>
                             </Paper>
 
-                            {/* 汇总数据 */}
                             <Grid container spacing={2}>
                                 <Grid item xs={4}><Card sx={{ bgcolor: '#e3f2fd' }}><CardContent sx={{ textAlign: 'center' }}><Typography variant="caption" color="text.secondary">净销售额</Typography><Typography variant="h6">€{checkResult.summary.totalNet.toFixed(2)}</Typography></CardContent></Card></Grid>
                                 <Grid item xs={4}><Card sx={{ bgcolor: '#e8f5e9' }}><CardContent sx={{ textAlign: 'center' }}><Typography variant="caption" color="text.secondary">VAT</Typography><Typography variant="h6">€{checkResult.summary.totalVAT.toFixed(2)}</Typography></CardContent></Card></Grid>
                                 <Grid item xs={4}><Card sx={{ bgcolor: '#fff3e0' }}><CardContent sx={{ textAlign: 'center' }}><Typography variant="caption" color="text.secondary">订单数</Typography><Typography variant="h6">{checkResult.summary.totalOrders}</Typography></CardContent></Card></Grid>
                             </Grid>
 
-                            {/* 税务核对 */}
-                            <Paper sx={{ p: 2, mt: 2 }}>
-                                <Typography variant="subtitle2" gutterBottom>税务核对</Typography>
-                                <Grid container spacing={2}>
-                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">应缴VAT ({checkResult.taxRate}%)</Typography><Typography>€{checkResult.summary.expectedVAT.toFixed(2)}</Typography></Grid>
-                                    <Grid item xs={6}><Typography variant="caption" color="text.secondary">实际VAT</Typography><Typography>€{checkResult.summary.totalVAT.toFixed(2)}</Typography></Grid>
-                                </Grid>
-                                <Divider sx={{ my: 1 }} />
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Typography variant="caption" color="text.secondary">差异</Typography>
-                                    <Typography color={checkResult.summary.vatMatch ? 'success.main' : 'warning.main'}>€{checkResult.summary.vatDifference.toFixed(2)}</Typography>
-                                </Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                                    <Typography variant="caption" color="text.secondary">状态</Typography>
-                                    <Chip label={checkResult.status} color={checkResult.summary.vatMatch ? 'success' : 'warning'} size="small" />
-                                </Box>
-                                <Box sx={{ mt: 1 }}>
-                                    <Typography variant="caption" color="text.secondary">建议</Typography>
-                                    <Typography variant="body2">{checkResult.recommendation}</Typography>
-                                </Box>
-                            </Paper>
-
-                            {/* 月度明细 */}
                             {Object.keys(checkResult.monthsData).length > 0 && (
                                 <>
                                     <Typography variant="subtitle2" sx={{ mt: 2 }} gutterBottom>月度明细</Typography>
