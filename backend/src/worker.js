@@ -735,13 +735,13 @@ app.post('/api/v1/notifications/test', async (c) => {
         const tenantId = getTenantId(c);
         const { email, phone } = await c.req.json();
         
-        // 获取用户信息
+        // 获取用户信息（只查询存在的列）
         const user = await c.env.DB.prepare(
-            'SELECT email, phone FROM tenants WHERE tenant_id = ?'
+            'SELECT email FROM tenants WHERE tenant_id = ?'
         ).bind(tenantId).first();
         
         const toEmail = email || user?.email || 'admin@vatflow.com';
-        const toPhone = phone || user?.phone || '+861234567890';
+        const toPhone = phone || '+861234567890';
         
         // 获取通知设置
         const settingsResult = await c.env.DB.prepare(
@@ -783,43 +783,50 @@ app.post('/api/v1/notifications/test', async (c) => {
         // 如果开启了邮件通知，尝试发送
         if (settings.emailNotifications) {
             try {
-                // 使用 Resend API 发送邮件
-                const emailResult = await fetch('https://api.resend.com/emails', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${c.env.RESEND_API_KEY || ''}`
-                    },
-                    body: JSON.stringify({
-                        from: 'noreply@vatflow.com',
-                        to: [toEmail],
-                        subject: '🧪 VATFlow 测试通知',
-                        html: `
-                            <h2>🧪 测试通知</h2>
-                            <p>您好，这是一条来自 VATFlow 系统的测试通知。</p>
-                            <p>如果您收到此邮件，说明邮件通知功能配置正确。</p>
-                            <p>发送时间: ${new Date().toLocaleString()}</p>
-                            <hr>
-                            <p><a href="https://vatflow.vatapex.com">访问 VATFlow</a></p>
-                        `
-                    })
-                });
-                
-                if (emailResult.ok) {
-                    results.email.sent = true;
-                    results.email.message = '✅ 测试邮件已发送';
+                const resendApiKey = c.env.RESEND_API_KEY;
+                if (resendApiKey) {
+                    const emailResult = await fetch('https://api.resend.com/emails', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${resendApiKey}`
+                        },
+                        body: JSON.stringify({
+                            from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                            to: [toEmail],
+                            subject: '🧪 VATFlow 测试通知',
+                            html: `
+                                <h2>🧪 测试通知</h2>
+                                <p>您好，这是一条来自 VATFlow 系统的测试通知。</p>
+                                <p>如果您收到此邮件，说明邮件通知功能配置正确。</p>
+                                <p>发送时间: ${new Date().toLocaleString()}</p>
+                                <hr>
+                                <p><a href="https://vatflow.vatapex.com">访问 VATFlow</a></p>
+                            `
+                        })
+                    });
+                    
+                    if (emailResult.ok) {
+                        results.email.sent = true;
+                        results.email.message = '✅ 测试邮件已发送';
+                    } else {
+                        const errorText = await emailResult.text();
+                        results.email.message = '❌ 邮件发送失败: ' + errorText;
+                    }
+                } else {
+                    results.email.message = '⚠️ 邮件服务未配置 (缺少 RESEND_API_KEY)';
                 }
             } catch (emailError) {
                 results.email.message = '❌ 邮件发送失败: ' + emailError.message;
             }
         }
         
-        // 如果开启了短信通知，尝试发送（使用 Twilio）
+        // 如果开启了短信通知
         if (settings.smsNotifications) {
             try {
-                const twilioAccountSid = c.env.TWILIO_ACCOUNT_SID || '';
-                const twilioAuthToken = c.env.TWILIO_AUTH_TOKEN || '';
-                const twilioFromNumber = c.env.TWILIO_FROM_NUMBER || '';
+                const twilioAccountSid = c.env.TWILIO_ACCOUNT_SID;
+                const twilioAuthToken = c.env.TWILIO_AUTH_TOKEN;
+                const twilioFromNumber = c.env.TWILIO_FROM_NUMBER;
                 
                 if (twilioAccountSid && twilioAuthToken && twilioFromNumber) {
                     const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
@@ -839,6 +846,8 @@ app.post('/api/v1/notifications/test', async (c) => {
                     if (smsResult.ok) {
                         results.sms.sent = true;
                         results.sms.message = '✅ 测试短信已发送';
+                    } else {
+                        results.sms.message = '❌ 短信发送失败: ' + smsResult.status;
                     }
                 } else {
                     results.sms.message = '⚠️ 短信服务未配置 (缺少 Twilio 凭证)';
