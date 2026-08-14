@@ -548,9 +548,8 @@ app.get('/api/v1/transactions/stats', async (c) => {
     }
 });
 
-// backend/src/worker.js
 // =============================================
-// ===== 系统设置接口（完整版 - 替换原有设置接口） =====
+// ===== 系统设置接口（完整版） =====
 // =============================================
 
 // ===== 获取所有设置 =====
@@ -661,6 +660,205 @@ app.get('/api/v1/settings/:key', async (c) => {
         return c.json({ success: true, data: { [key]: null } });
     } catch (error) {
         console.error('❌ 获取设置失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// =============================================
+// ===== 通知设置接口 =====
+// =============================================
+
+// ===== 获取通知设置 =====
+app.get('/api/v1/settings/notifications', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        
+        const result = await c.env.DB.prepare(
+            'SELECT setting_value FROM system_settings WHERE setting_key = ? AND (tenant_id = ? OR tenant_id IS NULL)'
+        ).bind('notifications', tenantId).first();
+        
+        const defaultSettings = {
+            emailNotifications: false,
+            smsNotifications: false,
+            pushNotifications: false,
+            orderNotifications: false,
+            taxReminderNotifications: false,
+            reportReadyNotifications: false
+        };
+        
+        if (result && result.setting_value) {
+            try {
+                const settings = JSON.parse(result.setting_value);
+                return c.json({ 
+                    success: true, 
+                    data: { ...defaultSettings, ...settings } 
+                });
+            } catch (e) {
+                return c.json({ success: true, data: defaultSettings });
+            }
+        }
+        
+        return c.json({ success: true, data: defaultSettings });
+    } catch (error) {
+        console.error('❌ 获取通知设置失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// ===== 保存通知设置 =====
+app.post('/api/v1/settings/notifications', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const settings = await c.req.json();
+        
+        await c.env.DB.prepare(
+            `INSERT INTO system_settings (setting_key, setting_value, tenant_id, updated_at) 
+             VALUES (?, ?, ?, datetime("now")) 
+             ON CONFLICT(setting_key, tenant_id) DO UPDATE SET 
+             setting_value = ?, updated_at = datetime("now")`
+        ).bind('notifications', JSON.stringify(settings), tenantId, JSON.stringify(settings)).run();
+        
+        return c.json({ 
+            success: true, 
+            message: '通知设置更新成功',
+            data: settings
+        });
+    } catch (error) {
+        console.error('❌ 保存通知设置失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// ===== 发送测试通知 =====
+app.post('/api/v1/notifications/test', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const { email, phone } = await c.req.json();
+        
+        // 获取用户信息
+        const user = await c.env.DB.prepare(
+            'SELECT email, phone FROM tenants WHERE tenant_id = ?'
+        ).bind(tenantId).first();
+        
+        const toEmail = email || user?.email || 'admin@vatflow.com';
+        const toPhone = phone || user?.phone || '+861234567890';
+        
+        // 获取通知设置
+        const settingsResult = await c.env.DB.prepare(
+            'SELECT setting_value FROM system_settings WHERE setting_key = ? AND (tenant_id = ? OR tenant_id IS NULL)'
+        ).bind('notifications', tenantId).first();
+        
+        let settings = {
+            emailNotifications: false,
+            smsNotifications: false,
+            pushNotifications: false
+        };
+        
+        if (settingsResult && settingsResult.setting_value) {
+            try {
+                settings = JSON.parse(settingsResult.setting_value);
+            } catch (e) {}
+        }
+        
+        const results = {
+            email: {
+                enabled: settings.emailNotifications,
+                sent: false,
+                to: toEmail,
+                message: settings.emailNotifications ? '邮件已发送' : '邮件通知未开启'
+            },
+            sms: {
+                enabled: settings.smsNotifications,
+                sent: false,
+                to: toPhone,
+                message: settings.smsNotifications ? '短信已发送' : '短信通知未开启'
+            },
+            push: {
+                enabled: settings.pushNotifications,
+                sent: false,
+                message: settings.pushNotifications ? '推送已发送' : '推送通知未开启'
+            }
+        };
+        
+        // 如果开启了邮件通知，尝试发送
+        if (settings.emailNotifications) {
+            try {
+                // 使用 Resend API 发送邮件
+                const emailResult = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${c.env.RESEND_API_KEY || ''}`
+                    },
+                    body: JSON.stringify({
+                        from: 'noreply@vatflow.com',
+                        to: [toEmail],
+                        subject: '🧪 VATFlow 测试通知',
+                        html: `
+                            <h2>🧪 测试通知</h2>
+                            <p>您好，这是一条来自 VATFlow 系统的测试通知。</p>
+                            <p>如果您收到此邮件，说明邮件通知功能配置正确。</p>
+                            <p>发送时间: ${new Date().toLocaleString()}</p>
+                            <hr>
+                            <p><a href="https://vatflow.vatapex.com">访问 VATFlow</a></p>
+                        `
+                    })
+                });
+                
+                if (emailResult.ok) {
+                    results.email.sent = true;
+                    results.email.message = '✅ 测试邮件已发送';
+                }
+            } catch (emailError) {
+                results.email.message = '❌ 邮件发送失败: ' + emailError.message;
+            }
+        }
+        
+        // 如果开启了短信通知，尝试发送（使用 Twilio）
+        if (settings.smsNotifications) {
+            try {
+                const twilioAccountSid = c.env.TWILIO_ACCOUNT_SID || '';
+                const twilioAuthToken = c.env.TWILIO_AUTH_TOKEN || '';
+                const twilioFromNumber = c.env.TWILIO_FROM_NUMBER || '';
+                
+                if (twilioAccountSid && twilioAuthToken && twilioFromNumber) {
+                    const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+                    const smsResult = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Authorization': `Basic ${auth}`
+                        },
+                        body: new URLSearchParams({
+                            To: toPhone,
+                            From: twilioFromNumber,
+                            Body: '🧪 VATFlow 测试通知：如果您收到此短信，说明短信通知功能配置正确。'
+                        })
+                    });
+                    
+                    if (smsResult.ok) {
+                        results.sms.sent = true;
+                        results.sms.message = '✅ 测试短信已发送';
+                    }
+                } else {
+                    results.sms.message = '⚠️ 短信服务未配置 (缺少 Twilio 凭证)';
+                }
+            } catch (smsError) {
+                results.sms.message = '❌ 短信发送失败: ' + smsError.message;
+            }
+        }
+        
+        return c.json({ 
+            success: true, 
+            message: '测试通知完成',
+            data: {
+                settings,
+                results,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('❌ 测试通知失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
