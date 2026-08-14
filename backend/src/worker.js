@@ -548,9 +548,12 @@ app.get('/api/v1/transactions/stats', async (c) => {
     }
 });
 
+// backend/src/worker.js
 // =============================================
-// ===== 系统设置 =====
+// ===== 系统设置接口（完整版 - 替换原有设置接口） =====
 // =============================================
+
+// ===== 获取所有设置 =====
 app.get('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -563,36 +566,104 @@ app.get('/api/v1/settings', async (c) => {
             params.push(tenantId);
         }
         
-        const { results } = await c.env.DB.prepare(query).bind(...params).all()
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
         
         const settings = {};
         results.forEach(row => {
-            settings[row.setting_key] = row.setting_value;
+            try {
+                settings[row.setting_key] = JSON.parse(row.setting_value);
+            } catch {
+                settings[row.setting_key] = row.setting_value;
+            }
         });
         
-        return c.json({ success: true, data: settings })
+        const defaultSettings = {
+            systemName: 'VATFlow',
+            currency: 'EUR',
+            vatRate: 20,
+            maintenanceMode: false,
+            taxPeriod: 'quarterly',
+            defaultCountry: 'GB',
+            autoValidate: false,
+            emailNotifications: false,
+            smsNotifications: false,
+            pushNotifications: false,
+            language: 'zh-CN',
+            timezone: 'UTC+8',
+            dateFormat: 'YYYY-MM-DD'
+        };
+        
+        return c.json({ 
+            success: true, 
+            data: { ...defaultSettings, ...settings } 
+        });
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        console.error('❌ 获取设置失败:', error);
+        return c.json({ error: error.message }, 500);
     }
-})
+});
 
+// ===== 保存设置 =====
 app.post('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
-        const { key, value } = await c.req.json()
-        if (!key) {
-            return c.json({ error: '缺少设置键' }, 400)
+        const body = await c.req.json();
+        
+        // 支持两种格式
+        let settingsToSave = {};
+        if (body.key && body.value) {
+            settingsToSave = body.value;
+        } else {
+            settingsToSave = body;
         }
-        await c.env.DB.prepare(
-            `INSERT INTO system_settings (setting_key, setting_value, tenant_id, updated_at) 
-             VALUES (?, ?, ?, datetime("now")) 
-             ON CONFLICT(setting_key, tenant_id) DO UPDATE SET setting_value = ?, updated_at = datetime("now")`
-        ).bind(key, value, tenantId, value).run()
-        return c.json({ success: true, message: '设置更新成功' })
+        
+        for (const [key, value] of Object.entries(settingsToSave)) {
+            const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            
+            await c.env.DB.prepare(
+                `INSERT INTO system_settings (setting_key, setting_value, tenant_id, updated_at) 
+                 VALUES (?, ?, ?, datetime("now")) 
+                 ON CONFLICT(setting_key, tenant_id) DO UPDATE SET 
+                 setting_value = ?, updated_at = datetime("now")`
+            ).bind(key, valueStr, tenantId, valueStr).run();
+        }
+        
+        return c.json({ 
+            success: true, 
+            message: '设置保存成功',
+            data: settingsToSave
+        });
     } catch (error) {
-        return c.json({ error: error.message }, 500)
+        console.error('❌ 保存设置失败:', error);
+        return c.json({ error: error.message }, 500);
     }
-})
+});
+
+// ===== 获取单个设置 =====
+app.get('/api/v1/settings/:key', async (c) => {
+    try {
+        const key = c.req.param('key');
+        const tenantId = getTenantId(c);
+        
+        const result = await c.env.DB.prepare(
+            'SELECT setting_value FROM system_settings WHERE setting_key = ? AND (tenant_id = ? OR tenant_id IS NULL)'
+        ).bind(key, tenantId).first();
+        
+        if (result && result.setting_value) {
+            try {
+                const value = JSON.parse(result.setting_value);
+                return c.json({ success: true, data: { [key]: value } });
+            } catch {
+                return c.json({ success: true, data: { [key]: result.setting_value } });
+            }
+        }
+        
+        return c.json({ success: true, data: { [key]: null } });
+    } catch (error) {
+        console.error('❌ 获取设置失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
 
 // =============================================
 // ===== Dashboard（权限控制） =====
