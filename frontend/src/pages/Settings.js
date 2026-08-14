@@ -25,7 +25,8 @@ import {
     Refresh as RefreshIcon,
     Save as SaveIcon,
     CheckCircle as CheckCircleIcon,
-    Error as ErrorIcon
+    Error as ErrorIcon,
+    Notifications as NotificationsIcon
 } from '@mui/icons-material';
 
 function Settings() {
@@ -61,14 +62,16 @@ function Settings() {
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
-            
+            const userRole = localStorage.getItem('userRole') || 'user';
+
             const response = await fetch('https://api.vatapex.com/api/v1/settings', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId || ''
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
                 }
             });
-            
+
             if (!response.ok) {
                 console.log('使用默认设置');
                 setSettings({
@@ -89,10 +92,10 @@ function Settings() {
                 setLoading(false);
                 return;
             }
-            
+
             const result = await response.json();
             console.log('⚙️ 设置数据:', result);
-            
+
             if (result && result.success) {
                 const data = result.data || {};
                 setSettings(prev => ({
@@ -152,20 +155,22 @@ function Settings() {
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
-            
+            const userRole = localStorage.getItem('userRole') || 'user';
+
             const response = await fetch('https://api.vatapex.com/api/v1/settings', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId || ''
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
                 },
                 body: JSON.stringify(settings)
             });
-            
+
             const result = await response.json();
             console.log('💾 保存设置结果:', result);
-            
+
             if (result && result.success) {
                 setSuccess(true);
                 setSnackbar({
@@ -192,6 +197,65 @@ function Settings() {
             });
         } finally {
             setSaving(false);
+        }
+    };
+
+    // ===== 测试通知 =====
+    const handleTestNotification = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+            const userRole = localStorage.getItem('userRole') || 'user';
+
+            setLoading(true);
+
+            const response = await fetch('https://api.vatapex.com/api/v1/notifications/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
+                },
+                body: JSON.stringify({
+                    email: 'admin@vatflow.com',
+                    phone: '+861234567890'
+                })
+            });
+
+            const result = await response.json();
+            console.log('测试通知结果:', result);
+
+            if (result && result.success) {
+                const results = result.data?.results || {};
+                let message = '📨 测试通知已发送: ';
+                const parts = [];
+                if (results.email?.sent) parts.push('📧 邮件已发送');
+                if (results.sms?.sent) parts.push('📱 短信已发送');
+                if (results.push?.sent) parts.push('🔔 推送已发送');
+                message += parts.join(', ') || '请检查通知设置';
+
+                setSnackbar({
+                    open: true,
+                    message: message,
+                    severity: 'success'
+                });
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: '❌ 测试通知发送失败: ' + (result?.error || '未知错误'),
+                    severity: 'error'
+                });
+            }
+        } catch (err) {
+            console.error('❌ 测试通知失败:', err);
+            setSnackbar({
+                open: true,
+                message: '❌ 测试通知发送失败',
+                severity: 'error'
+            });
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -248,21 +312,31 @@ function Settings() {
 
     return (
         <Box sx={{ p: 3 }}>
-            {/* 页面标题 */}
+            {/* ===== 页面标题 ===== */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                     ⚙️ 系统设置
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button 
-                        variant="outlined" 
-                        startIcon={<RefreshIcon />} 
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<NotificationsIcon />}
+                        onClick={handleTestNotification}
+                        disabled={loading || saving}
+                        color="secondary"
+                    >
+                        测试通知
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
                         onClick={loadSettings}
+                        disabled={loading}
                     >
                         刷新
                     </Button>
-                    <Button 
-                        variant="contained" 
+                    <Button
+                        variant="contained"
                         startIcon={saving ? <CircularProgress size={20} /> : <SaveIcon />}
                         onClick={handleSave}
                         disabled={saving}
@@ -273,7 +347,7 @@ function Settings() {
                 </Box>
             </Box>
 
-            {/* 状态提示 */}
+            {/* ===== 状态提示 ===== */}
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
                     {error}
@@ -336,7 +410,7 @@ function Settings() {
                             <Grid item xs={12}>
                                 <FormControlLabel
                                     control={
-                                        <Switch 
+                                        <Switch
                                             checked={settings.maintenanceMode}
                                             onChange={() => handleToggle('maintenanceMode')}
                                             color="warning"
@@ -409,7 +483,7 @@ function Settings() {
                             <Grid item xs={12} md={4}>
                                 <FormControlLabel
                                     control={
-                                        <Switch 
+                                        <Switch
                                             checked={settings.autoValidate}
                                             onChange={() => handleToggle('autoValidate')}
                                             color="success"
@@ -439,7 +513,7 @@ function Settings() {
                             <Grid item xs={12} md={4}>
                                 <FormControlLabel
                                     control={
-                                        <Switch 
+                                        <Switch
                                             checked={settings.emailNotifications}
                                             onChange={() => handleToggle('emailNotifications')}
                                             color="primary"
@@ -458,7 +532,7 @@ function Settings() {
                             <Grid item xs={12} md={4}>
                                 <FormControlLabel
                                     control={
-                                        <Switch 
+                                        <Switch
                                             checked={settings.smsNotifications}
                                             onChange={() => handleToggle('smsNotifications')}
                                             color="primary"
@@ -477,7 +551,7 @@ function Settings() {
                             <Grid item xs={12} md={4}>
                                 <FormControlLabel
                                     control={
-                                        <Switch 
+                                        <Switch
                                             checked={settings.pushNotifications}
                                             onChange={() => handleToggle('pushNotifications')}
                                             color="primary"
@@ -571,7 +645,7 @@ function Settings() {
                 </Grid>
             </Grid>
 
-            {/* Snackbar */}
+            {/* ===== Snackbar ===== */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}
