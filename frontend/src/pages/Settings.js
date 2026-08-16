@@ -28,6 +28,7 @@ import {
     Error as ErrorIcon,
     Notifications as NotificationsIcon
 } from '@mui/icons-material';
+import PushNotification from '../components/PushNotification';
 
 function Settings() {
     const [loading, setLoading] = useState(true);
@@ -495,54 +496,49 @@ function Settings() {
                     </Paper>
                 </Grid>
 
-                {/* ===== 通知设置（移除短信） ===== */}
-                <Grid item xs={12}>
-                    <Paper sx={{ p: 3 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                            🔔 通知设置
+{/* ===== 通知设置 ===== */}
+<Grid item xs={12}>
+    <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            🔔 通知设置
+        </Typography>
+        <Grid container spacing={3}>
+            {/* 邮件通知 */}
+            <Grid item xs={12} md={6}>
+                <FormControlLabel
+                    control={
+                        <Switch
+                            checked={settings.emailNotifications}
+                            onChange={() => handleToggle('emailNotifications')}
+                            color="primary"
+                        />
+                    }
+                    label={
+                        <Box>
+                            <Typography variant="body2">📧 邮件通知</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                {settings.emailNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
+                            </Typography>
+                        </Box>
+                    }
+                />
+            </Grid>
+
+            {/* 推送通知 */}
+            <Grid item xs={12} md={6}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
+                    <Box>
+                        <Typography variant="body2">🔔 浏览器推送</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                            在浏览器中接收实时通知
                         </Typography>
-                        <Grid container spacing={3}>
-                            <Grid item xs={12} md={6}>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={settings.emailNotifications}
-                                            onChange={() => handleToggle('emailNotifications')}
-                                            color="primary"
-                                        />
-                                    }
-                                    label={
-                                        <Box>
-                                            <Typography variant="body2">📧 邮件通知</Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {settings.emailNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
-                                            </Typography>
-                                        </Box>
-                                    }
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={settings.pushNotifications}
-                                            onChange={() => handleToggle('pushNotifications')}
-                                            color="primary"
-                                        />
-                                    }
-                                    label={
-                                        <Box>
-                                            <Typography variant="body2">🔔 推送通知</Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {settings.pushNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
-                                            </Typography>
-                                        </Box>
-                                    }
-                                />
-                            </Grid>
-                        </Grid>
-                    </Paper>
-                </Grid>
+                    </Box>
+                    <PushNotification />
+                </Box>
+            </Grid>
+        </Grid>
+    </Paper>
+</Grid>
 
                 {/* ===== 高级设置 ===== */}
                 <Grid item xs={12}>
