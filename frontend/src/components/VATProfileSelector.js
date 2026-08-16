@@ -27,7 +27,7 @@ import {
     Close as CloseIcon
 } from '@mui/icons-material';
 
-// ===== 完整国家列表 =====
+// ===== 完整国家列表（43个国家）=====
 const ALL_COUNTRIES = [
     // 欧洲
     { code: 'GB', name: '英国', flag: '🇬🇧' },
