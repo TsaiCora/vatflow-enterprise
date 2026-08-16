@@ -977,13 +977,15 @@ app.post('/api/v1/reports/generate', async (c) => {
 })
 
 // =============================================
-// ===== 税务接口 =====
+// ===== 税务接口（含 PVA 递延增值税支持） =====
 // =============================================
 app.post('/api/v1/tax/validate', async (c) => {
     try {
         const body = await c.req.json()
-        const { vatNumber, amount, country, period } = body
-        
+        const { vatNumber, amount, country, period, taxType, pvaReason, pvaReference } = body
+
+        console.log('📤 税务校验请求:', { vatNumber, amount, country, period, taxType })
+
         if (!vatNumber || !country) {
             return c.json({ success: false, error: 'VAT号码和国家为必填项' }, 400)
         }
@@ -994,8 +996,24 @@ app.post('/api/v1/tax/validate', async (c) => {
         const countryName = COUNTRY_NAME_MAP[countryCode] || countryCode
 
         const netAmount = amount || 0
-        const vatAmount = netAmount * (taxRate / 100)
-        const grossAmount = netAmount + vatAmount
+        let vatAmount = netAmount * (taxRate / 100)
+        let grossAmount = netAmount + vatAmount
+        let taxTypeLabel = '标准VAT'
+
+        // ===== PVA 递延增值税处理 =====
+        if (taxType === 'pva') {
+            // 递延增值税：当期 VAT 为 0，递延到后续申报
+            vatAmount = 0
+            grossAmount = netAmount
+            taxTypeLabel = '递延增值税 (PVA)'
+            
+            console.log(`📋 PVA 递延: ${pvaReason || '未指定'}, 参考号: ${pvaReference || '无'}`)
+        }
+
+        // 进口 VAT 处理
+        if (taxType === 'import') {
+            taxTypeLabel = '进口VAT'
+        }
 
         let valid = true
         let message = 'VAT 号码有效'
@@ -1044,6 +1062,15 @@ app.post('/api/v1/tax/validate', async (c) => {
             message = `VAT 号码格式无效，请使用 ${countryCode} 格式`
         }
 
+        // 如果是 PVA，额外记录递延信息
+        const additionalInfo = {}
+        if (taxType === 'pva') {
+            additionalInfo.pvaReason = pvaReason || '未指定'
+            additionalInfo.pvaReference = pvaReference || '无'
+            additionalInfo.taxType = 'pva'
+            additionalInfo.deferredVAT = vatAmount
+        }
+
         return c.json({
             success: true,
             data: {
@@ -1058,81 +1085,14 @@ app.post('/api/v1/tax/validate', async (c) => {
                 grossAmount,
                 currency,
                 period: period || null,
-                timestamp: new Date().toISOString()
+                taxType: taxTypeLabel,
+                timestamp: new Date().toISOString(),
+                ...additionalInfo
             }
         })
     } catch (error) {
         console.error('❌ 税务校验错误:', error)
         return c.json({ success: false, error: error.message || '税务校验失败' }, 500)
-    }
-})
-
-app.post('/api/v1/tax/validate-batch', async (c) => {
-    try {
-        const tenantId = getTenantId(c);
-        const { transactionIds } = await c.req.json();
-        const { results } = await c.env.DB.prepare(
-            `SELECT * FROM transactions WHERE tenant_id = ? AND id IN (${transactionIds.map(() => '?').join(',')})`
-        ).bind(tenantId, ...transactionIds).all();
-
-        let validCount = 0;
-        let invalidCount = 0;
-
-        for (const transaction of results) {
-            const taxRate = TAX_RATES[transaction.country] || 20;
-            const expectedVAT = transaction.net_amount * (taxRate / 100);
-            const isValid = Math.abs(transaction.vat_amount - expectedVAT) < 1;
-            
-            await c.env.DB.prepare(
-                `UPDATE transactions SET status = ?, tax_validated = ? WHERE tenant_id = ? AND id = ?`
-            ).bind(isValid ? 'validated' : 'error', isValid ? 1 : 0, tenantId, transaction.id).run();
-
-            if (isValid) validCount++;
-            else invalidCount++;
-        }
-
-        return c.json({
-            success: true,
-            validCount,
-            invalidCount,
-            total: results.length
-        });
-    } catch (error) {
-        return c.json({ error: error.message }, 500)
-    }
-})
-
-app.post('/api/v1/tax/summary', async (c) => {
-    try {
-        const { importData, salesData } = await c.req.json()
-        const totalImportVat = importData?.reduce((sum, item) => sum + (item.totalImportVat || 0), 0) || 0
-        const totalSalesVat = salesData?.reduce((sum, item) => sum + (item.vatAmount || 0), 0) || 0
-        return c.json({
-            success: true,
-            data: {
-                totalImportVat,
-                totalSalesVat,
-                totalPayableVAT: totalSalesVat - totalImportVat,
-                importCount: importData?.length || 0,
-                salesCount: salesData?.length || 0
-            }
-        })
-    } catch (error) {
-        return c.json({ error: error.message }, 500)
-    }
-})
-
-app.get('/api/v1/tax/countries', async (c) => {
-    try {
-        const countries = Object.keys(TAX_RATES).map(code => ({
-            code,
-            name: COUNTRY_NAME_MAP[code] || code,
-            taxRate: TAX_RATES[code],
-            currency: CURRENCY_MAP[code] || 'EUR'
-        }))
-        return c.json({ success: true, data: countries })
-    } catch (error) {
-        return c.json({ error: error.message }, 500)
     }
 })
 
@@ -1204,7 +1164,6 @@ const PLATFORM_CONFIG = {
     yahoo: { countryMode: 'manual', defaultCountry: 'JP' },
     mercari: { countryMode: 'manual', defaultCountry: 'JP' },
     poshmark: { countryMode: 'manual', defaultCountry: 'US' },
-    pva: { countryMode: 'manual', defaultCountry: 'GB' },
 };
 
 // =============================================

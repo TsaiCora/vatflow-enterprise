@@ -1,6 +1,6 @@
 // frontend/src/pages/TaxValidation.js
 // ============================================================
-// 🔥🔥🔥 税务校验页面 - 版本 2026-08-11-v3 🔥🔥🔥
+// 🔥🔥🔥 税务校验页面 - 版本 2026-08-16 包含PVA递延选项 🔥🔥🔥
 // ============================================================
 import React, { useState } from 'react';
 import {
@@ -18,7 +18,9 @@ import {
     FormControl,
     InputLabel,
     Select,
-    Snackbar
+    Snackbar,
+    Chip,
+    Divider
 } from '@mui/material';
 import { Send as SendIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon } from '@mui/icons-material';
 
@@ -60,8 +62,23 @@ const ALL_COUNTRIES = [
     { code: 'MX', name: '墨西哥', flag: '🇲🇽', taxRate: 16 },
 ];
 
+// ===== 税务类型选项 =====
+const TAX_TYPES = [
+    { value: 'standard', label: '标准VAT', description: '标准增值税计算' },
+    { value: 'pva', label: '递延增值税 (PVA)', description: 'Postponed VAT Accounting - 进口递延' },
+    { value: 'import', label: '进口VAT', description: '进口增值税' },
+];
+
+// ===== 递延原因选项 =====
+const PVA_REASONS = [
+    { value: 'import_goods', label: '进口货物' },
+    { value: 'cross_border', label: '跨境交易' },
+    { value: 'warehousing', label: '仓储递延' },
+    { value: 'other', label: '其他' },
+];
+
 function TaxValidation() {
-    console.log('🔥🔥🔥 TaxValidation 组件已渲染 v3 🔥🔥🔥');
+    console.log('🔥🔥🔥 TaxValidation 组件已渲染 - 包含PVA选项 🔥🔥🔥');
 
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
@@ -72,13 +89,29 @@ function TaxValidation() {
         vatNumber: 'GB123456789',
         amount: 1000,
         country: 'GB',
-        period: '2026-Q3'
+        period: '2026-Q3',
+        taxType: 'standard',
+        pvaReason: 'import_goods',
+        pvaReference: ''
     });
 
     const handleChange = (field, value) => {
         setFormData({ ...formData, [field]: value });
     };
 
+    // ===== 获取国家名称 =====
+    const getCountryName = (code) => {
+        const country = ALL_COUNTRIES.find(c => c.code === code);
+        return country ? `${country.flag} ${country.name}` : code;
+    };
+
+    // ===== 获取国家税率 =====
+    const getTaxRate = (code) => {
+        const country = ALL_COUNTRIES.find(c => c.code === code);
+        return country ? country.taxRate : 0;
+    };
+
+    // ===== 执行校验 =====
     const handleValidate = async () => {
         console.log('🔄 点击执行校验按钮');
         
@@ -107,7 +140,10 @@ function TaxValidation() {
                 vatNumber: formData.vatNumber,
                 amount: formData.amount,
                 country: formData.country,
-                period: formData.period
+                period: formData.period,
+                taxType: formData.taxType,
+                pvaReason: formData.pvaReason,
+                pvaReference: formData.pvaReference
             };
             console.log('📤 发送请求:', requestBody);
 
@@ -152,30 +188,28 @@ function TaxValidation() {
         }
     };
 
+    // ===== 重置表单 =====
     const handleReset = () => {
         setFormData({
             vatNumber: '',
             amount: 1000,
             country: 'GB',
-            period: '2026-Q3'
+            period: '2026-Q3',
+            taxType: 'standard',
+            pvaReason: 'import_goods',
+            pvaReference: ''
         });
         setResult(null);
         setError(null);
         setSuccess(false);
     };
 
-    const getCountryName = (code) => {
-        const country = ALL_COUNTRIES.find(c => c.code === code);
-        return country ? `${country.flag} ${country.name}` : code;
-    };
-
-    const getTaxRate = (code) => {
-        const country = ALL_COUNTRIES.find(c => c.code === code);
-        return country ? country.taxRate : 0;
-    };
+    // ===== 判断是否显示PVA字段 =====
+    const isPVA = formData.taxType === 'pva';
 
     return (
         <Box sx={{ p: 3 }}>
+            {/* ===== 页面标题 ===== */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" sx={{ fontWeight: 'bold' }}>✅ 税务校验</Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
@@ -191,6 +225,7 @@ function TaxValidation() {
                 </Box>
             </Box>
 
+            {/* ===== 错误/成功提示 ===== */}
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)} icon={<ErrorIcon />}>
                     {error}
@@ -203,12 +238,15 @@ function TaxValidation() {
                 </Alert>
             )}
 
+            {/* ===== 主内容 ===== */}
             <Grid container spacing={3}>
+                {/* ===== 左侧：表单 ===== */}
                 <Grid item xs={12} md={6}>
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>📋 校验信息</Typography>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                                {/* VAT号码 */}
                                 <TextField
                                     fullWidth
                                     label="VAT号码 *"
@@ -217,6 +255,8 @@ function TaxValidation() {
                                     placeholder="例如: GB123456789"
                                     disabled={loading}
                                 />
+
+                                {/* 金额 */}
                                 <TextField
                                     fullWidth
                                     label="金额 (€)"
@@ -225,6 +265,8 @@ function TaxValidation() {
                                     onChange={(e) => handleChange('amount', parseFloat(e.target.value) || 0)}
                                     disabled={loading}
                                 />
+
+                                {/* 国家 */}
                                 <FormControl fullWidth disabled={loading}>
                                     <InputLabel>国家 *</InputLabel>
                                     <Select
@@ -239,6 +281,68 @@ function TaxValidation() {
                                         ))}
                                     </Select>
                                 </FormControl>
+
+                                {/* 税务类型（新增PVA选项） */}
+                                <FormControl fullWidth disabled={loading}>
+                                    <InputLabel>税务类型</InputLabel>
+                                    <Select
+                                        value={formData.taxType}
+                                        onChange={(e) => handleChange('taxType', e.target.value)}
+                                        label="税务类型"
+                                    >
+                                        {TAX_TYPES.map((t) => (
+                                            <MenuItem key={t.value} value={t.value}>
+                                                {t.label}
+                                                <Chip 
+                                                    label={t.description} 
+                                                    size="small" 
+                                                    variant="outlined" 
+                                                    sx={{ ml: 1, fontSize: 10 }} 
+                                                />
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+
+                                {/* PVA 递延相关字段 */}
+                                {isPVA && (
+                                    <Paper sx={{ p: 2, bgcolor: '#fff8e1', border: '1px solid #ffb300' }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                            <Chip label="PVA" color="warning" size="small" />
+                                            <Typography variant="caption" color="text.secondary">
+                                                递延增值税会计
+                                            </Typography>
+                                        </Box>
+
+                                        <FormControl fullWidth disabled={loading} size="small" sx={{ mb: 2 }}>
+                                            <InputLabel>递延原因</InputLabel>
+                                            <Select
+                                                value={formData.pvaReason}
+                                                onChange={(e) => handleChange('pvaReason', e.target.value)}
+                                                label="递延原因"
+                                            >
+                                                {PVA_REASONS.map((r) => (
+                                                    <MenuItem key={r.value} value={r.value}>
+                                                        {r.label}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+
+                                        <TextField
+                                            fullWidth
+                                            label="递延参考编号"
+                                            value={formData.pvaReference}
+                                            onChange={(e) => handleChange('pvaReference', e.target.value)}
+                                            placeholder="例如: PVA-2026-001"
+                                            disabled={loading}
+                                            size="small"
+                                            helperText="选填，用于追踪递延记录"
+                                        />
+                                    </Paper>
+                                )}
+
+                                {/* 申报周期 */}
                                 <TextField
                                     fullWidth
                                     label="申报周期"
@@ -247,14 +351,20 @@ function TaxValidation() {
                                     placeholder="例如: 2026-Q3"
                                     disabled={loading}
                                 />
+
+                                {/* 税率提示 */}
                                 <Alert severity="info">
                                     💡 当前国家税率: <strong>{getTaxRate(formData.country)}%</strong>
+                                    {isPVA && (
+                                        <span> | 递延增值税 (PVA) 已启用</span>
+                                    )}
                                 </Alert>
                             </Box>
                         </CardContent>
                     </Card>
                 </Grid>
 
+                {/* ===== 右侧：结果 ===== */}
                 <Grid item xs={12} md={6}>
                     <Card sx={{ height: '100%' }}>
                         <CardContent>
@@ -266,6 +376,15 @@ function TaxValidation() {
                                         <Typography variant="h6" color={success ? 'success.main' : 'warning.main'}>
                                             {success ? '✅ 校验通过' : '⚠️ 校验结果'}
                                         </Typography>
+                                        {/* 显示税务类型 */}
+                                        {result.taxType && (
+                                            <Chip 
+                                                label={result.taxType === 'pva' ? '递延增值税 (PVA)' : '标准VAT'} 
+                                                size="small" 
+                                                color={result.taxType === 'pva' ? 'warning' : 'primary'}
+                                                sx={{ mt: 1 }}
+                                            />
+                                        )}
                                     </Paper>
                                     <Paper sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 2, maxHeight: 300, overflow: 'auto' }}>
                                         <pre style={{ margin: 0, fontSize: 12, fontFamily: 'monospace' }}>
@@ -283,6 +402,7 @@ function TaxValidation() {
                 </Grid>
             </Grid>
 
+            {/* ===== Snackbar ===== */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}
