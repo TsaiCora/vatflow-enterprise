@@ -25,10 +25,8 @@ import {
     Refresh as RefreshIcon,
     Save as SaveIcon,
     CheckCircle as CheckCircleIcon,
-    Error as ErrorIcon,
-    Notifications as NotificationsIcon
+    Error as ErrorIcon
 } from '@mui/icons-material';
-import PushNotification from '../components/PushNotification';
 
 function Settings() {
     const [loading, setLoading] = useState(true);
@@ -196,63 +194,6 @@ function Settings() {
         }
     };
 
-    // ===== 测试通知 =====
-    const handleTestNotification = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            const userRole = localStorage.getItem('userRole') || 'user';
-
-            setLoading(true);
-
-            const response = await fetch('https://api.vatapex.com/api/v1/notifications/test', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId || '',
-                    'X-User-Role': userRole
-                },
-                body: JSON.stringify({
-                    email: 'admin@vatflow.com'
-                })
-            });
-
-            const result = await response.json();
-            console.log('测试通知结果:', result);
-
-            if (result && result.success) {
-                const results = result.data?.results || {};
-                let message = '📨 测试通知已发送: ';
-                const parts = [];
-                if (results.email?.sent) parts.push('📧 邮件已发送');
-                if (results.push?.sent) parts.push('🔔 推送已发送');
-                message += parts.join(', ') || '请检查通知设置';
-
-                setSnackbar({
-                    open: true,
-                    message: message,
-                    severity: 'success'
-                });
-            } else {
-                setSnackbar({
-                    open: true,
-                    message: '❌ 测试通知发送失败: ' + (result?.error || '未知错误'),
-                    severity: 'error'
-                });
-            }
-        } catch (err) {
-            console.error('❌ 测试通知失败:', err);
-            setSnackbar({
-                open: true,
-                message: '❌ 测试通知发送失败',
-                severity: 'error'
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
-
     // ===== 切换开关 =====
     const handleToggle = (field) => {
         setSettings(prev => ({
@@ -311,15 +252,6 @@ function Settings() {
                     ⚙️ 系统设置
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <Button
-                        variant="outlined"
-                        startIcon={<NotificationsIcon />}
-                        onClick={handleTestNotification}
-                        disabled={loading || saving}
-                        color="secondary"
-                    >
-                        测试通知
-                    </Button>
                     <Button
                         variant="outlined"
                         startIcon={<RefreshIcon />}
@@ -496,49 +428,54 @@ function Settings() {
                     </Paper>
                 </Grid>
 
-{/* ===== 通知设置 ===== */}
-<Grid item xs={12}>
-    <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-            🔔 通知设置
-        </Typography>
-        <Grid container spacing={3}>
-            {/* 邮件通知 */}
-            <Grid item xs={12} md={6}>
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={settings.emailNotifications}
-                            onChange={() => handleToggle('emailNotifications')}
-                            color="primary"
-                        />
-                    }
-                    label={
-                        <Box>
-                            <Typography variant="body2">📧 邮件通知</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                {settings.emailNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
-                            </Typography>
-                        </Box>
-                    }
-                />
-            </Grid>
-
-            {/* 推送通知 */}
-            <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
-                    <Box>
-                        <Typography variant="body2">🔔 浏览器推送</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                            在浏览器中接收实时通知
+                {/* ===== 通知设置 ===== */}
+                <Grid item xs={12}>
+                    <Paper sx={{ p: 3 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                            🔔 通知设置
                         </Typography>
-                    </Box>
-                    <PushNotification />
-                </Box>
-            </Grid>
-        </Grid>
-    </Paper>
-</Grid>
+                        <Grid container spacing={3}>
+                            <Grid item xs={12} md={6}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={settings.emailNotifications}
+                                            onChange={() => handleToggle('emailNotifications')}
+                                            color="primary"
+                                        />
+                                    }
+                                    label={
+                                        <Box>
+                                            <Typography variant="body2">📧 邮件通知</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {settings.emailNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
+                                            </Typography>
+                                        </Box>
+                                    }
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={settings.pushNotifications}
+                                            onChange={() => handleToggle('pushNotifications')}
+                                            color="primary"
+                                        />
+                                    }
+                                    label={
+                                        <Box>
+                                            <Typography variant="body2">🔔 推送通知</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {settings.pushNotifications ? '✅ 已开启' : '⏸️ 已关闭'}
+                                            </Typography>
+                                        </Box>
+                                    }
+                                />
+                            </Grid>
+                        </Grid>
+                    </Paper>
+                </Grid>
 
                 {/* ===== 高级设置 ===== */}
                 <Grid item xs={12}>
