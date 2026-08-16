@@ -9,18 +9,16 @@ function PushNotification() {
     const [loading, setLoading] = useState(false);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-    // ===== 替换为您的 VAPID 公钥 =====
+    // ===== 使用您生成的 VAPID 公钥 =====
     const VAPID_PUBLIC_KEY = 'BEobUnzx9wE8IEpDppXBKASYyyP2FN9A8e_-PPnKxh3DHgaqSBIECKLV95uKildiikOHSnK_EUupuVxD4AltLYs';
 
     useEffect(() => {
-        // 检查浏览器是否支持推送
         if ('serviceWorker' in navigator && 'PushManager' in window) {
             setIsSupported(true);
             checkSubscription();
         }
     }, []);
 
-    // 检查是否已订阅
     const checkSubscription = async () => {
         try {
             const registration = await navigator.serviceWorker.ready;
@@ -31,7 +29,6 @@ function PushNotification() {
         }
     };
 
-    // 工具函数：将 Base64 URL 安全字符串转换为 Uint8Array
     const urlBase64ToUint8Array = (base64String) => {
         const padding = '='.repeat((4 - base64String.length % 4) % 4);
         const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -43,27 +40,19 @@ function PushNotification() {
         return outputArray;
     };
 
-    // 订阅推送
     const subscribeToPush = async () => {
         setLoading(true);
         try {
-            // 1. 注册 Service Worker
             const registration = await navigator.serviceWorker.register('/service-worker.js');
             console.log('✅ Service Worker 注册成功');
 
-            // 2. 请求权限
             const permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-                setSnackbar({
-                    open: true,
-                    message: '❌ 需要允许通知权限',
-                    severity: 'error'
-                });
+                setSnackbar({ open: true, message: '❌ 需要允许通知权限', severity: 'error' });
                 setLoading(false);
                 return;
             }
 
-            // 3. 订阅推送
             const subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
@@ -71,7 +60,6 @@ function PushNotification() {
 
             console.log('✅ 推送订阅成功:', subscription);
 
-            // 4. 发送订阅信息到后端
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
             const userRole = localStorage.getItem('userRole') || 'user';
@@ -92,31 +80,18 @@ function PushNotification() {
 
             if (result && result.success) {
                 setIsSubscribed(true);
-                setSnackbar({
-                    open: true,
-                    message: '✅ 推送通知已开启',
-                    severity: 'success'
-                });
+                setSnackbar({ open: true, message: '✅ 推送通知已开启', severity: 'success' });
             } else {
-                setSnackbar({
-                    open: true,
-                    message: '❌ 订阅保存失败: ' + (result?.error || ''),
-                    severity: 'error'
-                });
+                setSnackbar({ open: true, message: '❌ 订阅保存失败', severity: 'error' });
             }
         } catch (err) {
             console.error('❌ 订阅失败:', err);
-            setSnackbar({
-                open: true,
-                message: '❌ 订阅失败: ' + err.message,
-                severity: 'error'
-            });
+            setSnackbar({ open: true, message: '❌ 订阅失败: ' + err.message, severity: 'error' });
         } finally {
             setLoading(false);
         }
     };
 
-    // 取消订阅
     const unsubscribeFromPush = async () => {
         setLoading(true);
         try {
@@ -127,7 +102,6 @@ function PushNotification() {
                 await subscription.unsubscribe();
                 console.log('✅ 取消订阅成功');
 
-                // 通知后端删除订阅
                 const token = localStorage.getItem('token');
                 const tenantId = localStorage.getItem('tenantId');
                 const userRole = localStorage.getItem('userRole') || 'user';
@@ -144,30 +118,18 @@ function PushNotification() {
                 });
 
                 setIsSubscribed(false);
-                setSnackbar({
-                    open: true,
-                    message: '✅ 推送通知已关闭',
-                    severity: 'success'
-                });
+                setSnackbar({ open: true, message: '✅ 推送通知已关闭', severity: 'success' });
             }
         } catch (err) {
             console.error('❌ 取消订阅失败:', err);
-            setSnackbar({
-                open: true,
-                message: '❌ 取消订阅失败',
-                severity: 'error'
-            });
+            setSnackbar({ open: true, message: '❌ 取消订阅失败', severity: 'error' });
         } finally {
             setLoading(false);
         }
     };
 
     if (!isSupported) {
-        return (
-            <Typography variant="caption" color="text.secondary">
-                ⚠️ 当前浏览器不支持推送通知
-            </Typography>
-        );
+        return <Typography variant="caption" color="text.secondary">⚠️ 当前浏览器不支持推送通知</Typography>;
     }
 
     return (
