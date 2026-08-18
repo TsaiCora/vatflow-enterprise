@@ -2156,26 +2156,12 @@ async function checkVatExpiry(env) {
     }
 }
 
-
-// =============================================
-// ===== 4. 定时任务触发 =====
-// =============================================
-
-// 在文件末尾修改 export default
-export default {
-    fetch: app.fetch,
-    async scheduled(event, env, ctx) {
-        console.log(`🕐 定时任务触发: ${event.cron}`);
-        await checkVatExpiry(env);
-    }
-};
 // =============================================
 // ===== 404 =====
 // =============================================
 app.notFound((c) => {
     return c.json({ error: '接口不存在' }, 404)
 })
-
 // =============================================
 // ===== 错误处理 =====
 // =============================================
@@ -2183,5 +2169,13 @@ app.onError((err, c) => {
     console.error('Error:', err)
     return c.json({ error: err.message || '服务器错误' }, 500)
 })
-
-export default app
+// =============================================
+// ===== 4. 定时任务触发 =====
+// =============================================
+export default {
+    fetch: app.fetch,
+    async scheduled(event, env, ctx) {
+        console.log(`🕐 定时任务触发: ${event.cron}`);
+        await checkVatExpiry(env);
+    }
+};
