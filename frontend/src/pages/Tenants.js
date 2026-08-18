@@ -28,14 +28,18 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem
+    MenuItem,
+    Divider
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
     Add as AddIcon,
     Edit as EditIcon,
     Delete as DeleteIcon,
-    Close as CloseIcon
+    Close as CloseIcon,
+    CalendarToday as CalendarIcon,
+    CheckCircle as CheckCircleIcon,
+    Warning as WarningIcon
 } from '@mui/icons-material';
 
 function Tenants() {
@@ -43,7 +47,9 @@ function Tenants() {
     const [tenants, setTenants] = useState([]);
     const [error, setError] = useState(null);
     const [openDialog, setOpenDialog] = useState(false);
+    const [openVatDialog, setOpenVatDialog] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+    const [selectedTenant, setSelectedTenant] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [formData, setFormData] = useState({
         tenant_id: '',
@@ -54,6 +60,13 @@ function Tenants() {
         country: 'GB',
         vat_number: '',
         role: 'user'
+    });
+    const [vatFormData, setVatFormData] = useState({
+        vatExpiryDate: '',
+        extendYears: 1,
+        contractNumber: '',
+        paymentDate: '',
+        paymentAmount: ''
     });
 
     const COUNTRIES = [
@@ -74,6 +87,9 @@ function Tenants() {
         { code: 'CN', name: '中国' },
     ];
 
+    const userRole = localStorage.getItem('userRole') || 'user';
+    const isAdmin = userRole === 'admin';
+
     // ===== 加载租户列表 =====
     const loadData = async () => {
         setLoading(true);
@@ -81,11 +97,6 @@ function Tenants() {
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
-            const userRole = localStorage.getItem('userRole') || 'user';
-
-            console.log('🔑 Token:', token ? '存在' : '不存在');
-            console.log('🏢 Tenant ID:', tenantId);
-            console.log('👤 User Role:', userRole);
 
             const response = await fetch('https://api.vatapex.com/api/v1/tenants', {
                 headers: {
@@ -94,8 +105,6 @@ function Tenants() {
                     'X-User-Role': userRole
                 }
             });
-
-            console.log('📊 响应状态:', response.status);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -122,6 +131,18 @@ function Tenants() {
     useEffect(() => {
         loadData();
     }, []);
+
+    // ===== 计算剩余天数 =====
+    const getDaysRemaining = (expiryDate) => {
+        if (!expiryDate) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiry = new Date(expiryDate);
+        expiry.setHours(0, 0, 0, 0);
+        const diffTime = expiry.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    };
 
     // ===== 打开创建弹窗 =====
     const handleOpenCreate = () => {
@@ -155,6 +176,19 @@ function Tenants() {
         setOpenDialog(true);
     };
 
+    // ===== 打开VAT管理弹窗 =====
+    const handleOpenVatDialog = (tenant) => {
+        setSelectedTenant(tenant);
+        setVatFormData({
+            vatExpiryDate: tenant.vat_expiry_date || '',
+            extendYears: 1,
+            contractNumber: '',
+            paymentDate: '',
+            paymentAmount: ''
+        });
+        setOpenVatDialog(true);
+    };
+
     // ===== 保存租户 =====
     const handleSave = async () => {
         if (!formData.tenant_id || !formData.name || !formData.email) {
@@ -173,7 +207,6 @@ function Tenants() {
         try {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
-            const userRole = localStorage.getItem('userRole') || 'user';
             
             let url = 'https://api.vatapex.com/api/v1/tenants';
             let method = 'POST';
@@ -235,7 +268,6 @@ function Tenants() {
         try {
             const token = localStorage.getItem('token');
             const tenantIdCurrent = localStorage.getItem('tenantId');
-            const userRole = localStorage.getItem('userRole') || 'user';
             
             const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${tenantId}`, {
                 method: 'DELETE',
@@ -260,6 +292,67 @@ function Tenants() {
         }
     };
 
+    // ===== 保存VAT设置/续期 =====
+    const handleVatSave = async () => {
+        if (!selectedTenant) return;
+
+        if (!vatFormData.vatExpiryDate) {
+            setSnackbar({ open: true, message: '请选择到期日期', severity: 'warning' });
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+
+            const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${selectedTenant.tenant_id}/vat-extend`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': userRole
+                },
+                body: JSON.stringify({
+                    vatExpiryDate: vatFormData.vatExpiryDate,
+                    extendYears: vatFormData.extendYears,
+                    contractNumber: vatFormData.contractNumber || null,
+                    paymentDate: vatFormData.paymentDate || null,
+                    paymentAmount: vatFormData.paymentAmount ? parseFloat(vatFormData.paymentAmount) : null
+                })
+            });
+
+            const result = await response.json();
+            console.log('📥 VAT续期结果:', result);
+
+            if (result && result.success) {
+                setSnackbar({
+                    open: true,
+                    message: `✅ ${selectedTenant.name} VAT已续期 ${vatFormData.extendYears} 年`,
+                    severity: 'success'
+                });
+                setOpenVatDialog(false);
+                loadData();
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: result?.error || '操作失败',
+                    severity: 'error'
+                });
+            }
+        } catch (err) {
+            console.error('❌ VAT续期失败:', err);
+            setSnackbar({
+                open: true,
+                message: '操作失败',
+                severity: 'error'
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // ===== 状态芯片 =====
     const getStatusChip = (status) => {
         const config = {
@@ -278,6 +371,16 @@ function Tenants() {
         return <Chip label="用户" size="small" color="default" />;
     };
 
+    // ===== VAT状态芯片 =====
+    const getVatStatusChip = (expiryDate) => {
+        const days = getDaysRemaining(expiryDate);
+        if (days === null) return <Chip label="未设置" size="small" variant="outlined" />;
+        if (days < 0) return <Chip label="已过期" size="small" color="error" icon={<WarningIcon />} />;
+        if (days <= 30) return <Chip label={`${days}天`} size="small" color="warning" />;
+        if (days <= 90) return <Chip label={`${days}天`} size="small" color="info" />;
+        return <Chip label={`${days}天`} size="small" color="success" />;
+    };
+
     return (
         <Box sx={{ p: 3 }}>
             {/* ===== 页面标题 ===== */}
@@ -294,18 +397,19 @@ function Tenants() {
                     >
                         刷新
                     </Button>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={handleOpenCreate}
-                        size="small"
-                    >
-                        添加租户
-                    </Button>
+                    {isAdmin && (
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={handleOpenCreate}
+                            size="small"
+                        >
+                            添加租户
+                        </Button>
+                    )}
                 </Box>
             </Box>
 
-            {/* ===== 错误提示 ===== */}
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
                     {error}
@@ -356,20 +460,21 @@ function Tenants() {
                             <TableCell>国家</TableCell>
                             <TableCell>角色</TableCell>
                             <TableCell>状态</TableCell>
+                            <TableCell>VAT到期</TableCell>
                             <TableCell>创建日期</TableCell>
-                            <TableCell align="center">操作</TableCell>
+                            {isAdmin && <TableCell align="center">操作</TableCell>}
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                                <TableCell colSpan={isAdmin ? 10 : 9} align="center" sx={{ py: 4 }}>
                                     <CircularProgress />
                                 </TableCell>
                             </TableRow>
                         ) : tenants.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                                <TableCell colSpan={isAdmin ? 10 : 9} align="center" sx={{ py: 4 }}>
                                     <Typography color="textSecondary">暂无租户数据</Typography>
                                 </TableCell>
                             </TableRow>
@@ -385,19 +490,27 @@ function Tenants() {
                                     <TableCell>{item.country || '-'}</TableCell>
                                     <TableCell>{getRoleChip(item.role)}</TableCell>
                                     <TableCell>{getStatusChip(item.status)}</TableCell>
+                                    <TableCell>{getVatStatusChip(item.vat_expiry_date)}</TableCell>
                                     <TableCell>{item.created_at ? new Date(item.created_at).toLocaleDateString() : '-'}</TableCell>
-                                    <TableCell align="center">
-                                        <Tooltip title="编辑">
-                                            <IconButton size="small" onClick={() => handleOpenEdit(item)}>
-                                                <EditIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="删除">
-                                            <IconButton size="small" color="error" onClick={() => handleDelete(item.tenant_id)}>
-                                                <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </TableCell>
+                                    {isAdmin && (
+                                        <TableCell align="center">
+                                            <Tooltip title="VAT管理">
+                                                <IconButton size="small" onClick={() => handleOpenVatDialog(item)}>
+                                                    <CalendarIcon fontSize="small" color="primary" />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="编辑">
+                                                <IconButton size="small" onClick={() => handleOpenEdit(item)}>
+                                                    <EditIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="删除">
+                                                <IconButton size="small" color="error" onClick={() => handleDelete(item.tenant_id)}>
+                                                    <DeleteIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </TableCell>
+                                    )}
                                 </TableRow>
                             ))
                         )}
@@ -405,7 +518,7 @@ function Tenants() {
                 </Table>
             </TableContainer>
 
-            {/* ===== 创建/编辑弹窗 ===== */}
+            {/* ===== 创建/编辑租户弹窗 ===== */}
             <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -493,6 +606,94 @@ function Tenants() {
                         disabled={loading}
                     >
                         {loading ? '保存中...' : (isEditing ? '更新' : '创建')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* ===== VAT管理弹窗 ===== */}
+            <Dialog open={openVatDialog} onClose={() => setOpenVatDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6">
+                            📅 VAT管理 - {selectedTenant?.name}
+                        </Typography>
+                        <IconButton onClick={() => setOpenVatDialog(false)}>
+                            <CloseIcon />
+                        </IconButton>
+                    </Box>
+                </DialogTitle>
+                <DialogContent>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+                        <Alert severity="info">
+                            {selectedTenant?.vat_expiry_date 
+                                ? `当前到期日期: ${selectedTenant.vat_expiry_date}`
+                                : '尚未设置VAT到期日期'}
+                        </Alert>
+
+                        <TextField
+                            label="新的到期日期 *"
+                            type="date"
+                            value={vatFormData.vatExpiryDate}
+                            onChange={(e) => setVatFormData({...vatFormData, vatExpiryDate: e.target.value})}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            helperText="设置新的VAT证书到期日期"
+                        />
+
+                        <Divider>续期信息</Divider>
+
+                        <FormControl fullWidth>
+                            <InputLabel>续期年限</InputLabel>
+                            <Select
+                                value={vatFormData.extendYears}
+                                onChange={(e) => setVatFormData({...vatFormData, extendYears: e.target.value})}
+                                label="续期年限"
+                            >
+                                <MenuItem value={1}>1 年</MenuItem>
+                                <MenuItem value={2}>2 年</MenuItem>
+                                <MenuItem value={3}>3 年</MenuItem>
+                            </Select>
+                        </FormControl>
+
+                        <TextField
+                            label="合同编号"
+                            value={vatFormData.contractNumber}
+                            onChange={(e) => setVatFormData({...vatFormData, contractNumber: e.target.value})}
+                            fullWidth
+                            placeholder="例如: CON-2026-001"
+                            helperText="选填，用于记录续期合同"
+                        />
+
+                        <TextField
+                            label="付款日期"
+                            type="date"
+                            value={vatFormData.paymentDate}
+                            onChange={(e) => setVatFormData({...vatFormData, paymentDate: e.target.value})}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            helperText="选填，记录付款日期"
+                        />
+
+                        <TextField
+                            label="付款金额 (€)"
+                            type="number"
+                            value={vatFormData.paymentAmount}
+                            onChange={(e) => setVatFormData({...vatFormData, paymentAmount: e.target.value})}
+                            fullWidth
+                            placeholder="例如: 1000"
+                            helperText="选填，记录续期费用"
+                        />
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setOpenVatDialog(false)}>取消</Button>
+                    <Button
+                        variant="contained"
+                        color="success"
+                        onClick={handleVatSave}
+                        disabled={loading || !vatFormData.vatExpiryDate}
+                    >
+                        {loading ? '保存中...' : '确认续期'}
                     </Button>
                 </DialogActions>
             </Dialog>
