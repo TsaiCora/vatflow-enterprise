@@ -192,7 +192,7 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
             });
         }
 
-        // 生成重置令牌（使用 tenant_id + 时间戳）
+        // 生成重置令牌
         const token = btoa(`${user.tenant_id}:${Date.now()}`);
         const resetLink = `https://vatflow.vatapex.com/reset-password?token=${token}&email=${email}`;
 
@@ -212,23 +212,13 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
             body: JSON.stringify({
                 from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
                 to: [email],
-                subject: '🔐 VATFlow 密码重置',
-                html: `
-                    <h2>密码重置请求</h2>
-                    <p>您好 <strong>${user.name}</strong>，</p>
-                    <p>我们收到了您重置密码的请求。</p>
-                    <p>请点击下方按钮设置新密码：</p>
-                    <p>
-                        <a href="${resetLink}" 
-                           style="display:inline-block;padding:12px 24px;background:#1976d2;color:#fff;text-decoration:none;border-radius:4px;">
-                            🔐 重置密码
-                        </a>
-                    </p>
-                    <p>如果您没有请求重置密码，请忽略此邮件。</p>
-                    <p>此链接将在 <strong>1 小时</strong> 后失效。</p>
-                    <hr>
-                    <p style="color:#999;font-size:12px;">VATFlow 批量申报系统</p>
-                `
+                template: {
+                    id: '908b04c3-2b06-4135-9a95-712d872da7f6',  // Password Reset 模板ID
+                    variables: {
+                        userName: user.name,
+                        resetLink: resetLink
+                    }
+                }
             })
         });
 
@@ -1020,9 +1010,12 @@ app.get('/api/v1/dashboard', async (c) => {
     }
 })
 
+// backend/src/worker.js
 // =============================================
-// ===== 报告接口（权限控制） =====
+// ===== 报告接口（含邮件通知） =====
 // =============================================
+
+// 获取报告列表
 app.get('/api/v1/reports', async (c) => {
     try {
         const role = getUserRole(c);
@@ -1040,6 +1033,120 @@ app.get('/api/v1/reports', async (c) => {
         const { results } = await c.env.DB.prepare(query).bind(...params).all();
         
         return c.json({ success: true, data: results, total: results.length })
+    } catch (error) {
+        return c.json({ error: error.message }, 500)
+    }
+})
+
+// 生成报告
+app.post('/api/v1/reports/generate', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const { transactionIds, filters } = await c.req.json();
+        
+        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
+        const params = [tenantId];
+        
+        if (transactionIds && transactionIds.length) {
+            query += ` AND id IN (${transactionIds.map(() => '?').join(',')})`;
+            params.push(...transactionIds);
+        }
+        if (filters?.country) {
+            query += ' AND country = ?';
+            params.push(filters.country);
+        }
+        if (filters?.platform) {
+            query += ' AND platform = ?';
+            params.push(filters.platform);
+        }
+        if (filters?.startDate) {
+            query += ' AND order_date >= ?';
+            params.push(filters.startDate);
+        }
+        if (filters?.endDate) {
+            query += ' AND order_date <= ?';
+            params.push(filters.endDate);
+        }
+
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
+        
+        let totalNet = 0, totalVat = 0, totalGross = 0;
+        results.forEach(t => {
+            totalNet += t.net_amount || 0;
+            totalVat += t.vat_amount || 0;
+            totalGross += t.gross_amount || 0;
+        });
+
+        const reportId = 'RPT-' + Date.now();
+        
+        await c.env.DB.prepare(
+            `INSERT INTO filings 
+            (filing_id, tenant_id, country, platform, period, total_net, total_vat, total_gross, transaction_count, status, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))`
+        ).bind(
+            reportId,
+            tenantId,
+            filters?.country || '',
+            filters?.platform || '',
+            filters?.period || '',
+            totalNet, totalVat, totalGross,
+            results.length,
+            'draft'
+        ).run();
+
+        // =============================================
+        // ===== 发送报告生成通知邮件 =====
+        // =============================================
+        try {
+            // 获取租户邮箱
+            const tenant = await c.env.DB.prepare(
+                'SELECT email, name FROM tenants WHERE tenant_id = ?'
+            ).bind(tenantId).first();
+
+            if (tenant && tenant.email) {
+                const resendApiKey = c.env.RESEND_API_KEY;
+                if (resendApiKey) {
+                    await fetch('https://api.resend.com/emails', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${resendApiKey}`
+                        },
+                        body: JSON.stringify({
+                            from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                            to: [tenant.email],
+                            template: {
+                                id: '43792e0e-dc3e-4098-bf2a-220a8c78a7ca',  // Report Ready Notification 模板ID
+                                variables: {
+                                    userName: tenant.name || '用户',
+                                    reportId: reportId,
+                                    period: filters?.period || 'N/A',
+                                    totalVat: totalVat.toFixed(2),
+                                    transactionCount: results.length,
+                                    link: 'https://vatflow.vatapex.com/reports'
+                                }
+                            }
+                        })
+                    });
+                    console.log(`📧 报告生成通知已发送到: ${tenant.email}`);
+                }
+            }
+        } catch (emailError) {
+            console.error('❌ 发送报告通知邮件失败:', emailError);
+        }
+
+        return c.json({
+            success: true,
+            message: '报告生成成功',
+            reportId,
+            data: {
+                id: reportId,
+                totalNet,
+                totalVat,
+                totalGross,
+                transactionCount: results.length
+            }
+        })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
@@ -1117,8 +1224,9 @@ app.post('/api/v1/reports/generate', async (c) => {
     }
 })
 
+// backend/src/worker.js
 // =============================================
-// ===== 税务接口（含 PVA 递延增值税支持） =====
+// ===== 税务接口（含 PVA 递延增值税支持 + 邮件通知） =====
 // =============================================
 app.post('/api/v1/tax/validate', async (c) => {
     try {
@@ -1143,19 +1251,17 @@ app.post('/api/v1/tax/validate', async (c) => {
 
         // ===== PVA 递延增值税处理 =====
         if (taxType === 'pva') {
-            // 递延增值税：当期 VAT 为 0，递延到后续申报
             vatAmount = 0
             grossAmount = netAmount
             taxTypeLabel = '递延增值税 (PVA)'
-            
             console.log(`📋 PVA 递延: ${pvaReason || '未指定'}, 参考号: ${pvaReference || '无'}`)
         }
 
-        // 进口 VAT 处理
         if (taxType === 'import') {
             taxTypeLabel = '进口VAT'
         }
 
+        // VAT 号码格式验证
         let valid = true
         let message = 'VAT 号码有效'
 
@@ -1203,13 +1309,58 @@ app.post('/api/v1/tax/validate', async (c) => {
             message = `VAT 号码格式无效，请使用 ${countryCode} 格式`
         }
 
-        // 如果是 PVA，额外记录递延信息
         const additionalInfo = {}
         if (taxType === 'pva') {
             additionalInfo.pvaReason = pvaReason || '未指定'
             additionalInfo.pvaReference = pvaReference || '无'
             additionalInfo.taxType = 'pva'
             additionalInfo.deferredVAT = vatAmount
+        }
+
+        // =============================================
+        // ===== 发送税务校验通知邮件 =====
+        // =============================================
+        try {
+            const tenantId = getTenantId(c);
+            
+            // 获取租户邮箱
+            const tenant = await c.env.DB.prepare(
+                'SELECT email, name FROM tenants WHERE tenant_id = ?'
+            ).bind(tenantId).first();
+
+            if (tenant && tenant.email) {
+                const resendApiKey = c.env.RESEND_API_KEY;
+                if (resendApiKey) {
+                    const statusText = valid ? '✅ 通过' : '⚠️ 需复核';
+                    
+                    await fetch('https://api.resend.com/emails', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${resendApiKey}`
+                        },
+                        body: JSON.stringify({
+                            from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                            to: [tenant.email],
+                            template: {
+                                id: '7239cbb6-8965-4883-82f7-b9685fd3b558',  // Tax Validation Notification 模板ID
+                                variables: {
+                                    userName: tenant.name || '用户',
+                                    vatNumber: vatNumber,
+                                    country: countryName,
+                                    status: statusText,
+                                    vatAmount: vatAmount.toFixed(2),
+                                    link: 'https://vatflow.vatapex.com/tax-validation'
+                                }
+                            }
+                        })
+                    });
+                    console.log(`📧 税务校验通知已发送到: ${tenant.email}`);
+                }
+            }
+        } catch (emailError) {
+            // 邮件发送失败不影响主流程
+            console.error('❌ 发送税务校验通知邮件失败:', emailError);
         }
 
         return c.json({
@@ -1237,12 +1388,17 @@ app.post('/api/v1/tax/validate', async (c) => {
     }
 })
 
+// =============================================
+// ===== 税务平台列表（完整版） =====
+// =============================================
 app.get('/api/v1/tax/platforms', async (c) => {
     try {
         const platforms = [
+            // 电商平台（20个）
             { id: 'amazon', name: 'Amazon', icon: 'amazon' },
             { id: 'ebay', name: 'eBay', icon: 'ebay' },
             { id: 'aliexpress', name: 'AliExpress', icon: 'aliexpress' },
+            { id: 'allegro', name: 'Allegro', icon: 'allegro' },
             { id: 'shopify', name: 'Shopify', icon: 'shopify' },
             { id: 'etsy', name: 'Etsy', icon: 'etsy' },
             { id: 'walmart', name: 'Walmart', icon: 'walmart' },
@@ -1253,6 +1409,12 @@ app.get('/api/v1/tax/platforms', async (c) => {
             { id: 'temu', name: 'Temu', icon: 'temu' },
             { id: 'shein', name: 'SHEIN', icon: 'shein' },
             { id: 'tiktok', name: 'TikTok Shop', icon: 'tiktok' },
+            { id: 'depop', name: 'Depop', icon: 'depop' },
+            { id: 'mercari', name: 'Mercari', icon: 'mercari' },
+            { id: 'poshmark', name: 'Poshmark', icon: 'poshmark' },
+            { id: 'rakuten', name: 'Rakuten', icon: 'rakuten' },
+            { id: 'wish', name: 'Wish', icon: 'wish' },
+            { id: 'yahoo', name: 'Yahoo Shopping', icon: 'yahoo' },
         ]
         return c.json({ success: true, data: platforms })
     } catch (error) {
@@ -1260,20 +1422,32 @@ app.get('/api/v1/tax/platforms', async (c) => {
     }
 })
 
+// =============================================
+// ===== 电商平台与支持的国家列表（完整版） =====
+// =============================================
 app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
     try {
         const platforms = [
-            { id: 'amazon', name: 'Amazon', countries: ['GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'SE'] },
+            { id: 'amazon', name: 'Amazon', countries: ['GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'SE', 'BE', 'AT'] },
             { id: 'ebay', name: 'eBay', countries: ['GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT'] },
             { id: 'aliexpress', name: 'AliExpress', countries: ['GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'PL', 'SE'] },
-            { id: 'shopify', name: 'Shopify', countries: ['GB', 'US', 'CA', 'AU', 'NZ'] },
-            { id: 'etsy', name: 'Etsy', countries: ['GB', 'FR', 'DE', 'IT', 'NL', 'SE', 'PL'] },
+            { id: 'allegro', name: 'Allegro', countries: ['PL', 'CZ', 'SK', 'HU'] },
+            { id: 'shopify', name: 'Shopify', countries: ['GB', 'US', 'CA', 'AU', 'NZ', 'DE', 'FR', 'IT', 'ES'] },
+            { id: 'etsy', name: 'Etsy', countries: ['GB', 'FR', 'DE', 'IT', 'NL', 'SE', 'PL', 'US', 'CA', 'AU'] },
             { id: 'walmart', name: 'Walmart', countries: ['US', 'CA', 'MX'] },
+            { id: 'target', name: 'Target', countries: ['US'] },
+            { id: 'zalando', name: 'Zalando', countries: ['DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'SE', 'BE', 'AT', 'GB'] },
             { id: 'lazada', name: 'Lazada', countries: ['SG', 'MY', 'TH', 'VN', 'PH', 'ID'] },
             { id: 'shopee', name: 'Shopee', countries: ['SG', 'MY', 'TH', 'VN', 'PH', 'ID', 'TW'] },
-            { id: 'temu', name: 'Temu', countries: ['US', 'GB', 'DE', 'FR', 'IT', 'ES'] },
-            { id: 'shein', name: 'SHEIN', countries: ['US', 'GB', 'FR', 'DE', 'IT', 'ES', 'AU'] },
-            { id: 'tiktok', name: 'TikTok Shop', countries: ['GB', 'US', 'SG', 'TH', 'VN', 'PH', 'MY'] },
+            { id: 'temu', name: 'Temu', countries: ['US', 'GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'SE'] },
+            { id: 'shein', name: 'SHEIN', countries: ['US', 'GB', 'FR', 'DE', 'IT', 'ES', 'AU', 'MX'] },
+            { id: 'tiktok', name: 'TikTok Shop', countries: ['GB', 'US', 'SG', 'TH', 'VN', 'PH', 'MY', 'ID'] },
+            { id: 'depop', name: 'Depop', countries: ['GB', 'US', 'AU', 'FR', 'DE', 'IT', 'ES'] },
+            { id: 'mercari', name: 'Mercari', countries: ['JP', 'US'] },
+            { id: 'poshmark', name: 'Poshmark', countries: ['US', 'CA', 'AU'] },
+            { id: 'rakuten', name: 'Rakuten', countries: ['JP'] },
+            { id: 'wish', name: 'Wish', countries: ['US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'SE', 'PL'] },
+            { id: 'yahoo', name: 'Yahoo Shopping', countries: ['JP'] },
         ]
         return c.json({ success: true, data: platforms })
     } catch (error) {
