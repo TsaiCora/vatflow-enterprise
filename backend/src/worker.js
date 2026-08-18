@@ -1501,7 +1501,7 @@ const COUNTRY_MAP = {
     'AUSTRIA': 'AT', 'AT': 'AT',
     'NORWAY': 'NO', 'NO': 'NO',
     'SWITZERLAND': 'CH', 'CH': 'CH',
-    'JAPAN': 'JP', 'JAPAN': 'JP',
+    'JAPAN': 'JP', 
     'SINGAPORE': 'SG', 'SG': 'SG',
     'MALAYSIA': 'MY', 'MY': 'MY',
     'THAILAND': 'TH', 'TH': 'TH',
