@@ -2000,7 +2000,65 @@ app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
         return c.json({ error: error.message }, 500);
     }
 });
+// =============================================
+// ===== 发送 VAT 到期提醒邮件（使用 Resend 模板） =====
+// =============================================
+async function sendVatExpiryEmail(env, tenant, daysRemaining) {
+    try {
+        const resendApiKey = env.RESEND_API_KEY;
+        if (!resendApiKey) {
+            console.log('⚠️ RESEND_API_KEY 未配置');
+            return;
+        }
 
+        // 判断紧急程度
+        let urgency = '';
+        if (daysRemaining <= 1) {
+            urgency = '🔴 紧急';
+        } else if (daysRemaining <= 7) {
+            urgency = '🟠 即将到期';
+        } else if (daysRemaining <= 30) {
+            urgency = '🟡 需要注意';
+        } else {
+            urgency = '🟢 准备中';
+        }
+
+        const fromEmail = env.FROM_EMAIL || 'noreply@vatflow.com';
+        
+        // ===== 使用 Resend 模板发送 =====
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${resendApiKey}`
+            },
+            body: JSON.stringify({
+                from: fromEmail,
+                to: [tenant.email],
+                template: {
+                    id: '690766c3-17cc-4dc8-9d81-d15e898418d5',  // VAT Expiry Reminder 模板ID
+                    variables: {
+                        tenantName: tenant.name || '租户',
+                        companyName: tenant.company || '-',
+                        daysRemaining: daysRemaining,
+                        urgency: urgency,
+                        expiryDate: tenant.vat_expiry_date || '未设置',
+                        link: 'https://vatflow.vatapex.com/tenants'
+                    }
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ 邮件发送失败:', errorText);
+        } else {
+            console.log(`📧 VAT到期提醒已发送到: ${tenant.email} (${daysRemaining}天后到期)`);
+        }
+    } catch (error) {
+        console.error('❌ 发送VAT到期提醒邮件失败:', error);
+    }
+}
 // =============================================
 // ===== 定时任务函数（放在这里） =====
 // =============================================
