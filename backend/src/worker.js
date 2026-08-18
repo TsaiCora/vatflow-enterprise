@@ -327,14 +327,16 @@ app.get('/api/v1/platforms', async (c) => {
 })
 
 // =============================================
-// ===== 租户接口（权限控制） =====
+// ===== 租户接口（权限控制 + VAT到期日期） =====
 // =============================================
+
+// 获取所有租户（管理员看全部，普通租户只看自己）
 app.get('/api/v1/tenants', async (c) => {
     try {
         const role = getUserRole(c);
         const tenantId = getTenantId(c);
         
-        let query = 'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants';
+        let query = 'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at, vat_expiry_date, last_vat_reminder_sent FROM tenants';
         const params = [];
         
         if (role !== 'admin') {
@@ -351,8 +353,9 @@ app.get('/api/v1/tenants', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500);
     }
-})
+});
 
+// 获取单个租户
 app.get('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id');
@@ -364,7 +367,7 @@ app.get('/api/v1/tenants/:id', async (c) => {
         }
         
         const result = await c.env.DB.prepare(
-            'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at FROM tenants WHERE tenant_id = ?'
+            'SELECT tenant_id, name, email, company, country, vat_number, role, status, created_at, vat_expiry_date, last_vat_reminder_sent FROM tenants WHERE tenant_id = ?'
         ).bind(id).first();
         
         if (!result) {
@@ -374,8 +377,9 @@ app.get('/api/v1/tenants/:id', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500);
     }
-})
+});
 
+// 创建租户
 app.post('/api/v1/tenants', async (c) => {
     try {
         const role = getUserRole(c);
@@ -398,8 +402,9 @@ app.post('/api/v1/tenants', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
-})
+});
 
+// 更新租户
 app.put('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id');
@@ -418,8 +423,9 @@ app.put('/api/v1/tenants/:id', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
-})
+});
 
+// 删除租户
 app.delete('/api/v1/tenants/:id', async (c) => {
     try {
         const role = getUserRole(c);
@@ -434,8 +440,9 @@ app.delete('/api/v1/tenants/:id', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
-})
+});
 
+// 获取租户平台
 app.get('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
@@ -453,8 +460,9 @@ app.get('/api/v1/tenants/:id/platforms', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
-})
+});
 
+// 绑定租户平台
 app.post('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
@@ -473,7 +481,7 @@ app.post('/api/v1/tenants/:id/platforms', async (c) => {
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
-})
+});
 
 // =============================================
 // ===== 申报记录 =====
