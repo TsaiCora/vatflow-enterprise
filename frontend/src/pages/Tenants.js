@@ -38,7 +38,6 @@ import {
     Delete as DeleteIcon,
     Close as CloseIcon,
     CalendarToday as CalendarIcon,
-    CheckCircle as CheckCircleIcon,
     Warning as WarningIcon
 } from '@mui/icons-material';
 
@@ -306,7 +305,28 @@ function Tenants() {
             const token = localStorage.getItem('token');
             const tenantId = localStorage.getItem('tenantId');
 
-            const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${selectedTenant.tenant_id}/vat-extend`, {
+            // 判断是首次设置还是续期
+            const hasExistingExpiry = selectedTenant.vat_expiry_date;
+            
+            let url, body;
+            if (hasExistingExpiry) {
+                // 续期
+                url = `https://api.vatapex.com/api/v1/tenants/${selectedTenant.tenant_id}/vat-extend`;
+                body = JSON.stringify({
+                    extendYears: vatFormData.extendYears || 1,
+                    contractNumber: vatFormData.contractNumber || null,
+                    paymentDate: vatFormData.paymentDate || null,
+                    paymentAmount: vatFormData.paymentAmount ? parseFloat(vatFormData.paymentAmount) : null
+                });
+            } else {
+                // 首次设置
+                url = `https://api.vatapex.com/api/v1/tenants/${selectedTenant.tenant_id}/vat-expiry/set`;
+                body = JSON.stringify({
+                    vatExpiryDate: vatFormData.vatExpiryDate
+                });
+            }
+
+            const response = await fetch(url, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -314,22 +334,16 @@ function Tenants() {
                     'X-Tenant-ID': tenantId || '',
                     'X-User-Role': userRole
                 },
-                body: JSON.stringify({
-                    vatExpiryDate: vatFormData.vatExpiryDate,
-                    extendYears: vatFormData.extendYears,
-                    contractNumber: vatFormData.contractNumber || null,
-                    paymentDate: vatFormData.paymentDate || null,
-                    paymentAmount: vatFormData.paymentAmount ? parseFloat(vatFormData.paymentAmount) : null
-                })
+                body: body
             });
 
             const result = await response.json();
-            console.log('📥 VAT续期结果:', result);
+            console.log('📥 VAT保存结果:', result);
 
             if (result && result.success) {
                 setSnackbar({
                     open: true,
-                    message: `✅ ${selectedTenant.name} VAT已续期 ${vatFormData.extendYears} 年`,
+                    message: hasExistingExpiry ? `✅ ${selectedTenant.name} VAT已续期` : `✅ ${selectedTenant.name} VAT到期日期已设置`,
                     severity: 'success'
                 });
                 setOpenVatDialog(false);
@@ -342,7 +356,7 @@ function Tenants() {
                 });
             }
         } catch (err) {
-            console.error('❌ VAT续期失败:', err);
+            console.error('❌ VAT操作失败:', err);
             setSnackbar({
                 open: true,
                 message: '操作失败',
@@ -615,7 +629,7 @@ function Tenants() {
                 <DialogTitle>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="h6">
-                            📅 VAT管理 - {selectedTenant?.name}
+                            📅 {selectedTenant?.vat_expiry_date ? 'VAT续期' : '设置VAT到期日期'} - {selectedTenant?.name}
                         </Typography>
                         <IconButton onClick={() => setOpenVatDialog(false)}>
                             <CloseIcon />
@@ -624,65 +638,69 @@ function Tenants() {
                 </DialogTitle>
                 <DialogContent>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-                        <Alert severity="info">
-                            {selectedTenant?.vat_expiry_date 
-                                ? `当前到期日期: ${selectedTenant.vat_expiry_date}`
-                                : '尚未设置VAT到期日期'}
-                        </Alert>
+                        {selectedTenant?.vat_expiry_date ? (
+                            <Alert severity="info">
+                                当前到期日期: <strong>{selectedTenant.vat_expiry_date}</strong>
+                            </Alert>
+                        ) : (
+                            <Alert severity="warning">
+                                该租户尚未设置VAT到期日期
+                            </Alert>
+                        )}
 
                         <TextField
-                            label="新的到期日期 *"
+                            label={selectedTenant?.vat_expiry_date ? "新的到期日期" : "到期日期 *"}
                             type="date"
                             value={vatFormData.vatExpiryDate}
                             onChange={(e) => setVatFormData({...vatFormData, vatExpiryDate: e.target.value})}
                             fullWidth
                             InputLabelProps={{ shrink: true }}
-                            helperText="设置新的VAT证书到期日期"
+                            helperText={selectedTenant?.vat_expiry_date ? "续期后的新到期日期" : "设置VAT证书到期日期"}
                         />
 
-                        <Divider>续期信息</Divider>
-
-                        <FormControl fullWidth>
-                            <InputLabel>续期年限</InputLabel>
-                            <Select
-                                value={vatFormData.extendYears}
-                                onChange={(e) => setVatFormData({...vatFormData, extendYears: e.target.value})}
-                                label="续期年限"
-                            >
-                                <MenuItem value={1}>1 年</MenuItem>
-                                <MenuItem value={2}>2 年</MenuItem>
-                                <MenuItem value={3}>3 年</MenuItem>
-                            </Select>
-                        </FormControl>
-
-                        <TextField
-                            label="合同编号"
-                            value={vatFormData.contractNumber}
-                            onChange={(e) => setVatFormData({...vatFormData, contractNumber: e.target.value})}
-                            fullWidth
-                            placeholder="例如: CON-2026-001"
-                            helperText="选填，用于记录续期合同"
-                        />
-
-                        <TextField
-                            label="付款日期"
-                            type="date"
-                            value={vatFormData.paymentDate}
-                            onChange={(e) => setVatFormData({...vatFormData, paymentDate: e.target.value})}
-                            fullWidth
-                            InputLabelProps={{ shrink: true }}
-                            helperText="选填，记录付款日期"
-                        />
-
-                        <TextField
-                            label="付款金额 (€)"
-                            type="number"
-                            value={vatFormData.paymentAmount}
-                            onChange={(e) => setVatFormData({...vatFormData, paymentAmount: e.target.value})}
-                            fullWidth
-                            placeholder="例如: 1000"
-                            helperText="选填，记录续期费用"
-                        />
+                        {selectedTenant?.vat_expiry_date && (
+                            <>
+                                <Divider>续期信息</Divider>
+                                <FormControl fullWidth>
+                                    <InputLabel>续期年限</InputLabel>
+                                    <Select
+                                        value={vatFormData.extendYears}
+                                        onChange={(e) => setVatFormData({...vatFormData, extendYears: e.target.value})}
+                                        label="续期年限"
+                                    >
+                                        <MenuItem value={1}>1 年</MenuItem>
+                                        <MenuItem value={2}>2 年</MenuItem>
+                                        <MenuItem value={3}>3 年</MenuItem>
+                                    </Select>
+                                </FormControl>
+                                <TextField
+                                    label="合同编号"
+                                    value={vatFormData.contractNumber}
+                                    onChange={(e) => setVatFormData({...vatFormData, contractNumber: e.target.value})}
+                                    fullWidth
+                                    placeholder="例如: CON-2026-001"
+                                    helperText="选填，用于记录续期合同"
+                                />
+                                <TextField
+                                    label="付款日期"
+                                    type="date"
+                                    value={vatFormData.paymentDate}
+                                    onChange={(e) => setVatFormData({...vatFormData, paymentDate: e.target.value})}
+                                    fullWidth
+                                    InputLabelProps={{ shrink: true }}
+                                    helperText="选填，记录付款日期"
+                                />
+                                <TextField
+                                    label="付款金额 (€)"
+                                    type="number"
+                                    value={vatFormData.paymentAmount}
+                                    onChange={(e) => setVatFormData({...vatFormData, paymentAmount: e.target.value})}
+                                    fullWidth
+                                    placeholder="例如: 1000"
+                                    helperText="选填，记录续期费用"
+                                />
+                            </>
+                        )}
                     </Box>
                 </DialogContent>
                 <DialogActions>
@@ -693,7 +711,7 @@ function Tenants() {
                         onClick={handleVatSave}
                         disabled={loading || !vatFormData.vatExpiryDate}
                     >
-                        {loading ? '保存中...' : '确认续期'}
+                        {loading ? '保存中...' : (selectedTenant?.vat_expiry_date ? '确认续期' : '确认设置')}
                     </Button>
                 </DialogActions>
             </Dialog>

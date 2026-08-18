@@ -1874,11 +1874,13 @@ app.post('/api/v1/push/test', async (c) => {
     }
 });
 
+// backend/src/worker.js
+
 // =============================================
 // ===== VAT 到期日期管理接口 =====
 // =============================================
 
-// 获取 VAT 到期日期（租户和管理员都可以查看）
+// 获取 VAT 到期日期
 app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     try {
         const tenantId = c.req.param('id');
@@ -1905,7 +1907,7 @@ app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     }
 });
 
-// 设置 VAT 到期日期（仅管理员）
+// 设置 VAT 到期日期（仅管理员 - 首次设置）
 app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
     try {
         const tenantId = c.req.param('id');
