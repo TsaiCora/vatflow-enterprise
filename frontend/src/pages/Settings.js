@@ -25,12 +25,16 @@ import {
     Refresh as RefreshIcon,
     Save as SaveIcon,
     CheckCircle as CheckCircleIcon,
-    Error as ErrorIcon
+    Error as ErrorIcon,
+    Add as AddIcon
 } from '@mui/icons-material';
 
 function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [expiryLoading, setExpiryLoading] = useState(false);
+    const [extendYears, setExtendYears] = useState(1);
+    const [vatExpiryDate, setVatExpiryDate] = useState('');
     const [settings, setSettings] = useState({
         systemName: 'VATFlow',
         currency: 'EUR',
@@ -52,6 +56,7 @@ function Settings() {
     // ===== 加载设置 =====
     useEffect(() => {
         loadSettings();
+        loadVatExpiry();
     }, []);
 
     const loadSettings = async () => {
@@ -138,6 +143,101 @@ function Settings() {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ===== 加载 VAT 到期日期 =====
+    const loadVatExpiry = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+
+            const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${tenantId}/vat-expiry`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': localStorage.getItem('userRole') || 'user'
+                }
+            });
+
+            const result = await response.json();
+            if (result && result.success) {
+                setVatExpiryDate(result.data?.vatExpiryDate || '');
+            }
+        } catch (err) {
+            console.error('❌ 加载VAT到期日期失败:', err);
+        }
+    };
+
+    // ===== 计算剩余天数 =====
+    const getDaysRemaining = (expiryDate) => {
+        if (!expiryDate) return 0;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiry = new Date(expiryDate);
+        expiry.setHours(0, 0, 0, 0);
+        const diffTime = expiry.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays < 0 ? 0 : diffDays;
+    };
+
+    // ===== 续期 =====
+    const handleExtendVat = async () => {
+        if (!extendYears || extendYears <= 0) {
+            setSnackbar({ open: true, message: '请选择续期年限', severity: 'warning' });
+            return;
+        }
+
+        if (!vatExpiryDate) {
+            setSnackbar({ open: true, message: '请先设置VAT到期日期', severity: 'warning' });
+            return;
+        }
+
+        if (!confirm(`确定要将 VAT 续期 ${extendYears} 年吗？`)) return;
+
+        setExpiryLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const tenantId = localStorage.getItem('tenantId');
+
+            const response = await fetch(`https://api.vatapex.com/api/v1/tenants/${tenantId}/vat-expiry`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId || '',
+                    'X-User-Role': localStorage.getItem('userRole') || 'user'
+                },
+                body: JSON.stringify({ extendYears: parseInt(extendYears) })
+            });
+
+            const result = await response.json();
+            console.log('📥 续期结果:', result);
+
+            if (result && result.success) {
+                setVatExpiryDate(result.data.newExpiryDate);
+                setSnackbar({
+                    open: true,
+                    message: `✅ VAT已续期 ${extendYears} 年，新到期日: ${result.data.newExpiryDate}`,
+                    severity: 'success'
+                });
+                loadSettings();
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: result?.error || '续期失败',
+                    severity: 'error'
+                });
+            }
+        } catch (err) {
+            console.error('❌ 续期失败:', err);
+            setSnackbar({
+                open: true,
+                message: '续期失败，请重试',
+                severity: 'error'
+            });
+        } finally {
+            setExpiryLoading(false);
         }
     };
 
@@ -234,6 +334,8 @@ function Settings() {
             });
         }
     };
+
+    const daysRemaining = getDaysRemaining(vatExpiryDate);
 
     if (loading) {
         return (
@@ -425,6 +527,82 @@ function Settings() {
                                 />
                             </Grid>
                         </Grid>
+                    </Paper>
+                </Grid>
+
+                {/* ===== VAT到期管理 ===== */}
+                <Grid item xs={12}>
+                    <Paper sx={{ p: 3, bgcolor: '#fff8e1', border: '1px solid #ffb300' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                            📅 VAT到期管理
+                        </Typography>
+                        <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    fullWidth
+                                    label="当前到期日期"
+                                    type="date"
+                                    value={vatExpiryDate}
+                                    disabled
+                                    size="small"
+                                    InputLabelProps={{ shrink: true }}
+                                    helperText={
+                                        vatExpiryDate 
+                                            ? `剩余 ${daysRemaining} 天` 
+                                            : '请设置到期日期'
+                                    }
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>续期年限</InputLabel>
+                                    <Select
+                                        value={extendYears}
+                                        onChange={(e) => setExtendYears(e.target.value)}
+                                        label="续期年限"
+                                    >
+                                        <MenuItem value={1}>1 年</MenuItem>
+                                        <MenuItem value={2}>2 年</MenuItem>
+                                        <MenuItem value={3}>3 年</MenuItem>
+                                        <MenuItem value={4}>4 年</MenuItem>
+                                        <MenuItem value={5}>5 年</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <Button
+                                    fullWidth
+                                    variant="contained"
+                                    color="success"
+                                    startIcon={expiryLoading ? <CircularProgress size={20} /> : <AddIcon />}
+                                    onClick={handleExtendVat}
+                                    disabled={expiryLoading || !vatExpiryDate}
+                                    sx={{ height: '100%' }}
+                                >
+                                    {expiryLoading ? '续期中...' : '立即续期'}
+                                </Button>
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <Button
+                                    fullWidth
+                                    variant="outlined"
+                                    onClick={loadVatExpiry}
+                                    size="small"
+                                >
+                                    刷新
+                                </Button>
+                            </Grid>
+                        </Grid>
+                        {vatExpiryDate && daysRemaining <= 30 && (
+                            <Alert severity="warning" sx={{ mt: 2 }}>
+                                ⚠️ VAT即将到期，仅剩 <strong>{daysRemaining}</strong> 天，请及时续期！
+                            </Alert>
+                        )}
+                        {vatExpiryDate && daysRemaining <= 7 && (
+                            <Alert severity="error" sx={{ mt: 1 }}>
+                                🔴 VAT即将到期，仅剩 <strong>{daysRemaining}</strong> 天，请立即续期！
+                            </Alert>
+                        )}
                     </Paper>
                 </Grid>
 
