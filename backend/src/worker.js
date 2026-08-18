@@ -1873,19 +1873,19 @@ app.post('/api/v1/push/test', async (c) => {
         return c.json({ error: error.message }, 500);
     }
 });
-// backend/src/worker.js
 
 // =============================================
-// ===== 1. VAT 到期日期管理接口 =====
+// ===== VAT 到期日期管理接口 =====
 // =============================================
 
-// 获取租户的 VAT 到期日期
+// 获取 VAT 到期日期（租户和管理员都可以查看）
 app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     try {
         const tenantId = c.req.param('id');
         const currentTenantId = getTenantId(c);
+        const role = getUserRole(c);
         
-        if (tenantId !== currentTenantId) {
+        if (role !== 'admin' && tenantId !== currentTenantId) {
             return c.json({ error: '无权查看其他租户信息' }, 403);
         }
         
@@ -1896,7 +1896,8 @@ app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
         return c.json({
             success: true,
             data: {
-                vatExpiryDate: result?.vat_expiry_date || null
+                vatExpiryDate: result?.vat_expiry_date || null,
+                tenantId: tenantId
             }
         });
     } catch (error) {
@@ -1904,16 +1905,47 @@ app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     }
 });
 
-// 更新租户的 VAT 到期日期（续期）
-app.put('/api/v1/tenants/:id/vat-expiry', async (c) => {
+// 设置 VAT 到期日期（仅管理员）
+app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
     try {
         const tenantId = c.req.param('id');
-        const currentTenantId = getTenantId(c);
-        const { extendYears = 1 } = await c.req.json();
+        const role = getUserRole(c);
         
-        if (tenantId !== currentTenantId) {
-            return c.json({ error: '无权修改其他租户信息' }, 403);
+        if (role !== 'admin') {
+            return c.json({ error: '权限不足，仅管理员可设置' }, 403);
         }
+        
+        const { vatExpiryDate } = await c.req.json();
+        
+        if (!vatExpiryDate) {
+            return c.json({ error: '请输入到期日期' }, 400);
+        }
+        
+        await c.env.DB.prepare(
+            'UPDATE tenants SET vat_expiry_date = ?, last_vat_reminder_sent = NULL WHERE tenant_id = ?'
+        ).bind(vatExpiryDate, tenantId).run();
+        
+        return c.json({
+            success: true,
+            message: 'VAT到期日期设置成功',
+            data: { vatExpiryDate }
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// 续期（仅管理员，记录合同/转账信息）
+app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
+    try {
+        const tenantId = c.req.param('id');
+        const role = getUserRole(c);
+        
+        if (role !== 'admin') {
+            return c.json({ error: '权限不足，仅管理员可续期' }, 403);
+        }
+        
+        const { extendYears = 1, contractNumber, paymentDate, paymentAmount } = await c.req.json();
         
         const current = await c.env.DB.prepare(
             'SELECT vat_expiry_date FROM tenants WHERE tenant_id = ?'
@@ -1921,7 +1953,6 @@ app.put('/api/v1/tenants/:id/vat-expiry', async (c) => {
         
         const today = new Date();
         let baseDate = today;
-        
         if (current?.vat_expiry_date) {
             const expiryDate = new Date(current.vat_expiry_date);
             if (expiryDate > today) {
@@ -1934,8 +1965,24 @@ app.put('/api/v1/tenants/:id/vat-expiry', async (c) => {
         const newExpiryDate = newDate.toISOString().split('T')[0];
         
         await c.env.DB.prepare(
-            'UPDATE tenants SET vat_expiry_date = ?, last_vat_reminder_sent = NULL WHERE tenant_id = ?'
-        ).bind(newExpiryDate, tenantId).run();
+            `UPDATE tenants SET 
+                vat_expiry_date = ?, 
+                last_vat_reminder_sent = NULL,
+                last_extend_date = ?,
+                last_extend_years = ?,
+                last_contract_number = ?,
+                last_payment_date = ?,
+                last_payment_amount = ?
+             WHERE tenant_id = ?`
+        ).bind(
+            newExpiryDate,
+            new Date().toISOString().split('T')[0],
+            extendYears,
+            contractNumber || null,
+            paymentDate || null,
+            paymentAmount || null,
+            tenantId
+        ).run();
         
         return c.json({
             success: true,
@@ -1943,7 +1990,10 @@ app.put('/api/v1/tenants/:id/vat-expiry', async (c) => {
             data: {
                 oldExpiryDate: current?.vat_expiry_date || null,
                 newExpiryDate: newExpiryDate,
-                extendYears: extendYears
+                extendYears: extendYears,
+                contractNumber: contractNumber || null,
+                paymentDate: paymentDate || null,
+                paymentAmount: paymentAmount || null
             }
         });
     } catch (error) {
@@ -1951,154 +2001,9 @@ app.put('/api/v1/tenants/:id/vat-expiry', async (c) => {
     }
 });
 
-// 获取所有即将到期的租户（仅管理员）
-app.get('/api/v1/tenants/expiring-soon', async (c) => {
-    try {
-        const role = getUserRole(c);
-        if (role !== 'admin') {
-            return c.json({ error: '仅管理员可查看' }, 403);
-        }
-        
-        const today = new Date().toISOString().split('T')[0];
-        const ninetyDaysLater = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        
-        const { results } = await c.env.DB.prepare(
-            `SELECT tenant_id, name, email, company, vat_expiry_date 
-             FROM tenants 
-             WHERE vat_expiry_date IS NOT NULL 
-             AND vat_expiry_date BETWEEN ? AND ?`
-        ).bind(today, ninetyDaysLater).all();
-        
-        return c.json({ success: true, data: results });
-    } catch (error) {
-        return c.json({ error: error.message }, 500);
-    }
-});
-
-
 // =============================================
-// ===== 2. VAT 到期提醒邮件 =====
+// ===== 定时任务函数（放在这里） =====
 // =============================================
-
-async function sendVatExpiryEmail(env, tenant, daysRemaining) {
-    try {
-        const resendApiKey = env.RESEND_API_KEY;
-        if (!resendApiKey) {
-            console.log('⚠️ RESEND_API_KEY 未配置');
-            return;
-        }
-
-        let urgency = '';
-        let urgencyColor = '';
-        if (daysRemaining <= 1) {
-            urgency = '🔴 紧急';
-            urgencyColor = '#d32f2f';
-        } else if (daysRemaining <= 7) {
-            urgency = '🟠 即将到期';
-            urgencyColor = '#ed6c02';
-        } else if (daysRemaining <= 30) {
-            urgency = '🟡 需要注意';
-            urgencyColor = '#f9a825';
-        } else {
-            urgency = '🟢 准备中';
-            urgencyColor = '#2e7d32';
-        }
-
-        const fromEmail = env.FROM_EMAIL || 'noreply@vatflow.com';
-
-        await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${resendApiKey}`
-            },
-            body: JSON.stringify({
-                from: fromEmail,
-                to: [tenant.email],
-                subject: `⚠️ VAT申报提醒 - ${daysRemaining}天后到期`,
-                html: `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    </head>
-                    <body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background-color:#f5f7fa;">
-                        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f7fa;padding:40px 0;">
-                            <tr>
-                                <td align="center">
-                                    <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-                                        <tr>
-                                            <td align="center" style="padding-bottom:20px;">
-                                                <h1 style="color:#1976d2;font-size:28px;margin:0;">VATFlow</h1>
-                                                <p style="color:#666;font-size:14px;margin:0;">批量申报系统</p>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding:20px 0;">
-                                                <div style="background-color:${urgencyColor};color:#fff;padding:8px 16px;border-radius:4px;display:inline-block;font-weight:600;font-size:14px;">
-                                                    ${urgency}
-                                                </div>
-                                                <h2 style="color:#333;font-size:20px;margin:16px 0;">⚠️ VAT申报即将到期</h2>
-                                                <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 16px;">
-                                                    您好 <strong>${tenant.name}</strong>，
-                                                </p>
-                                                <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 16px;">
-                                                    您的 VAT 申报将在 <strong style="color:#d32f2f;font-size:18px;">${daysRemaining}</strong> 天后到期。
-                                                </p>
-                                                <table width="100%" cellpadding="10" style="background-color:#f8f9fa;border-radius:8px;margin:16px 0;">
-                                                    <tr>
-                                                        <td style="color:#555;font-size:14px;width:40%;"><strong>租户</strong></td>
-                                                        <td style="color:#333;font-size:14px;">${tenant.name}</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td style="color:#555;font-size:14px;"><strong>公司</strong></td>
-                                                        <td style="color:#333;font-size:14px;">${tenant.company || '-'}</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td style="color:#555;font-size:14px;"><strong>到期日期</strong></td>
-                                                        <td style="color:#333;font-size:14px;font-weight:600;">${tenant.vat_expiry_date}</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td style="color:#555;font-size:14px;"><strong>剩余天数</strong></td>
-                                                        <td style="color:#d32f2f;font-size:14px;font-weight:600;">${daysRemaining} 天</td>
-                                                    </tr>
-                                                </table>
-                                                <div style="text-align:center;margin:20px 0;">
-                                                    <a href="https://vatflow.vatapex.com/settings" 
-                                                       style="display:inline-block;padding:12px 32px;background:#1976d2;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;">
-                                                        📋 查看详情
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style="border-top:1px solid #e8ecf1;padding-top:20px;text-align:center;">
-                                                <p style="color:#999;font-size:12px;margin:0;">
-                                                    © 2026 VATFlow 批量申报系统
-                                                </p>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                        </table>
-                    </body>
-                    </html>
-                `
-            })
-        });
-        console.log(`📧 VAT到期提醒已发送到: ${tenant.email} (${daysRemaining}天后到期)`);
-    } catch (error) {
-        console.error('❌ 发送VAT到期提醒邮件失败:', error);
-    }
-}
-
-
-// =============================================
-// ===== 3. VAT 到期提醒定时任务 =====
-// =============================================
-
 async function checkVatExpiry(env) {
     console.log('🔍 开始检查VAT到期日期...');
     
@@ -2115,7 +2020,6 @@ async function checkVatExpiry(env) {
 
         console.log(`📊 找到 ${results.length} 个即将到期的租户`);
 
-        // 提醒天数：90, 60, 30, 15, 7, 3, 1
         const reminderDays = [90, 60, 30, 15, 7, 3, 1];
 
         for (const tenant of results) {
@@ -2162,6 +2066,7 @@ async function checkVatExpiry(env) {
 app.notFound((c) => {
     return c.json({ error: '接口不存在' }, 404)
 })
+
 // =============================================
 // ===== 错误处理 =====
 // =============================================
@@ -2169,8 +2074,9 @@ app.onError((err, c) => {
     console.error('Error:', err)
     return c.json({ error: err.message || '服务器错误' }, 500)
 })
+
 // =============================================
-// ===== 4. 定时任务触发 =====
+// ===== 导出（定时任务触发） =====
 // =============================================
 export default {
     fetch: app.fetch,
