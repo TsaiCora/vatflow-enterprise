@@ -166,7 +166,148 @@ app.post('/api/v1/auth/login', async (c) => {
         return c.json({ error: '登录失败' }, 500)
     }
 })
+// =============================================
+// ===== 密码重置接口 =====
+// =============================================
 
+// 1. 请求重置密码 - 发送重置邮件
+app.post('/api/v1/auth/forgot-password', async (c) => {
+    try {
+        const { email } = await c.req.json();
+
+        if (!email) {
+            return c.json({ error: '请输入邮箱地址' }, 400);
+        }
+
+        // 查找用户
+        const user = await c.env.DB.prepare(
+            'SELECT tenant_id, name, email FROM tenants WHERE email = ?'
+        ).bind(email).first();
+
+        if (!user) {
+            // 为了安全，不暴露用户是否存在
+            return c.json({
+                success: true,
+                message: '如果该邮箱已注册，您将收到重置密码的邮件'
+            });
+        }
+
+        // 生成重置令牌（使用 tenant_id + 时间戳）
+        const token = btoa(`${user.tenant_id}:${Date.now()}`);
+        const resetLink = `https://vatflow.vatapex.com/reset-password?token=${token}&email=${email}`;
+
+        // 发送重置邮件
+        const resendApiKey = c.env.RESEND_API_KEY;
+        if (!resendApiKey) {
+            console.error('❌ RESEND_API_KEY 未配置');
+            return c.json({ error: '邮件服务未配置' }, 500);
+        }
+
+        const emailResult = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${resendApiKey}`
+            },
+            body: JSON.stringify({
+                from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                to: [email],
+                subject: '🔐 VATFlow 密码重置',
+                html: `
+                    <h2>密码重置请求</h2>
+                    <p>您好 <strong>${user.name}</strong>，</p>
+                    <p>我们收到了您重置密码的请求。</p>
+                    <p>请点击下方按钮设置新密码：</p>
+                    <p>
+                        <a href="${resetLink}" 
+                           style="display:inline-block;padding:12px 24px;background:#1976d2;color:#fff;text-decoration:none;border-radius:4px;">
+                            🔐 重置密码
+                        </a>
+                    </p>
+                    <p>如果您没有请求重置密码，请忽略此邮件。</p>
+                    <p>此链接将在 <strong>1 小时</strong> 后失效。</p>
+                    <hr>
+                    <p style="color:#999;font-size:12px;">VATFlow 批量申报系统</p>
+                `
+            })
+        });
+
+        if (!emailResult.ok) {
+            const errorText = await emailResult.text();
+            console.error('❌ 邮件发送失败:', errorText);
+            return c.json({ error: '邮件发送失败，请稍后重试' }, 500);
+        }
+
+        console.log(`📧 重置邮件已发送到: ${email}`);
+        return c.json({
+            success: true,
+            message: '重置邮件已发送，请检查您的邮箱'
+        });
+
+    } catch (error) {
+        console.error('❌ 请求重置密码失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
+
+// 2. 验证令牌并重置密码
+app.post('/api/v1/auth/reset-password', async (c) => {
+    try {
+        const { token, email, newPassword } = await c.req.json();
+
+        if (!token || !email || !newPassword) {
+            return c.json({ error: '缺少必要参数' }, 400);
+        }
+
+        if (newPassword.length < 6) {
+            return c.json({ error: '密码长度至少为6位' }, 400);
+        }
+
+        // 验证 token
+        try {
+            const decoded = atob(token);
+            const [tenantId, timestamp] = decoded.split(':');
+            const tokenTime = parseInt(timestamp);
+            const currentTime = Date.now();
+
+            // 检查是否过期（1小时）
+            if (currentTime - tokenTime > 3600000) {
+                return c.json({ error: '重置链接已过期，请重新请求' }, 400);
+            }
+
+            // 验证邮箱是否匹配
+            const user = await c.env.DB.prepare(
+                'SELECT tenant_id FROM tenants WHERE email = ? AND tenant_id = ?'
+            ).bind(email, tenantId).first();
+
+            if (!user) {
+                return c.json({ error: '无效的重置链接' }, 400);
+            }
+
+            // 加密新密码
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            // 更新密码
+            await c.env.DB.prepare(
+                'UPDATE tenants SET password_hash = ? WHERE tenant_id = ?'
+            ).bind(hashedPassword, tenantId).run();
+
+            console.log(`✅ 密码重置成功: ${email}`);
+            return c.json({
+                success: true,
+                message: '密码重置成功，请使用新密码登录'
+            });
+
+        } catch (decodeError) {
+            console.error('❌ Token 解码失败:', decodeError);
+            return c.json({ error: '无效的重置链接' }, 400);
+        }
+
+    } catch (error) {
+        console.error('❌ 重置密码失败:', error);
+        return c.json({ error: error.message }, 500);
+    }
+});
 // =============================================
 // ===== 国家接口 =====
 // =============================================

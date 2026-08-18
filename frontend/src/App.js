@@ -3,7 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import Layout from './components/Layout';  // ← 修改这里！
+import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Tenants from './pages/Tenants';
@@ -12,21 +12,16 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Upload from './pages/Upload';
 import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
 
-// 创建主题
 const theme = createTheme({
     palette: {
         mode: 'light',
-        primary: {
-            main: '#1976d2',
-        },
-        secondary: {
-            main: '#dc004e',
-        },
+        primary: { main: '#1976d2' },
+        secondary: { main: '#dc004e' },
     },
 });
 
-// 受保护的路由组件
 const ProtectedRoute = ({ children }) => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -43,8 +38,11 @@ function App() {
             <CssBaseline />
             <Router>
                 <Routes>
+                    {/* 公开路由 */}
                     <Route path="/login" element={<Login />} />
-                    
+                    <Route path="/reset-password" element={<ResetPassword />} />
+
+                    {/* 受保护路由 */}
                     <Route path="/" element={
                         <ProtectedRoute>
                             <Layout />
@@ -59,7 +57,8 @@ function App() {
                         <Route path="settings" element={<Settings />} />
                         <Route path="upload" element={<Upload />} />
                     </Route>
-                    
+
+                    {/* 404 */}
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>
             </Router>

@@ -54,7 +54,7 @@ import {
 } from '@mui/icons-material';
 import { fileAPI, tenantAPI, transactionAPI, taxAPI, reportAPI } from '../services/api';
 
-// ===== 平台列表（21个）=====
+// ===== 平台列表（20个）=====
 const PLATFORMS = [
     { id: 'amazon', name: 'Amazon', icon: '🛒' },
     { id: 'ebay', name: 'eBay', icon: '📦' },
@@ -76,7 +76,6 @@ const PLATFORMS = [
     { id: 'rakuten', name: 'Rakuten', icon: '🛒' },
     { id: 'wish', name: 'Wish', icon: '🎁' },
     { id: 'yahoo', name: 'Yahoo Shopping', icon: '🔍' },
-    { id: 'pva', name: 'PVA', icon: '📋' },
 ];
 
 // ===== 国家列表（43个）=====
