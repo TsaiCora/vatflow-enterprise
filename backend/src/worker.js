@@ -3,6 +3,9 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import * as bcrypt from 'bcryptjs'
 import { buildPushHTTPRequest } from '@pushforge/builder';
+const taxRulesEngine = require('./services/taxRulesEngine');
+const invoiceService = require('./services/invoiceService');
+const filingService = require('./services/filingService');
 
 const app = new Hono()
 app.use('*', cors())
@@ -1369,7 +1372,274 @@ app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
         return c.json({ error: error.message }, 500)
     }
 })
+// =============================================
+// ===== 税务规则引擎接口 =====
+// =============================================
 
+// 获取国家税务规则
+app.get('/api/v1/tax/rules/:country', async (c) => {
+    try {
+        const countryCode = c.req.param('country');
+        const rules = taxRulesEngine.getCountryRules(countryCode);
+        return c.json({ success: true, data: rules });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 获取所有国家规则列表
+app.get('/api/v1/tax/countries-rules', async (c) => {
+    try {
+        const countries = taxRulesEngine.getCountriesList();
+        return c.json({ success: true, data: countries });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 计算 VAT
+app.post('/api/v1/tax/calculate', async (c) => {
+    try {
+        const body = await c.req.json();
+        const { countryCode, netAmount, rateType = 'standard' } = body;
+        
+        if (!countryCode || netAmount === undefined) {
+            return c.json({ error: 'Missing required parameters: countryCode, netAmount' }, 400);
+        }
+        
+        const result = taxRulesEngine.calculateVAT(countryCode, netAmount, rateType);
+        return c.json({ success: true, data: result });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 计算 PVA 递延增值税
+app.post('/api/v1/tax/pva-calculate', async (c) => {
+    try {
+        const body = await c.req.json();
+        const { countryCode, netAmount, pvaReason } = body;
+        
+        if (!countryCode || netAmount === undefined) {
+            return c.json({ error: 'Missing required parameters: countryCode, netAmount' }, 400);
+        }
+        
+        const result = taxRulesEngine.calculatePVA(countryCode, netAmount, pvaReason);
+        return c.json({ success: true, data: result });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// =============================================
+// ===== 发票接口 =====
+// =============================================
+
+// 生成发票
+app.post('/api/v1/invoices/create', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const body = await c.req.json();
+        
+        const { countryCode, buyerName, buyerAddress, buyerVATNumber, items, issueDate, dueDays } = body;
+        
+        if (!countryCode || !buyerName || !items || !items.length) {
+            return c.json({ error: 'Missing required parameters: countryCode, buyerName, items' }, 400);
+        }
+        
+        const invoice = invoiceService.createInvoice({
+            tenantId,
+            countryCode,
+            buyerName,
+            buyerAddress: buyerAddress || '',
+            buyerVATNumber: buyerVATNumber || '',
+            items,
+            issueDate: issueDate || new Date().toISOString().split('T')[0],
+            dueDays: dueDays || 30
+        });
+        
+        return c.json({ success: true, data: invoice });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 获取发票列表
+app.get('/api/v1/invoices', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const countryCode = c.req.query('country');
+        const status = c.req.query('status');
+        
+        const invoices = invoiceService.getInvoices(tenantId, { countryCode, status });
+        return c.json({ success: true, data: invoices });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 获取发票 HTML
+app.get('/api/v1/invoices/:number/html', async (c) => {
+    try {
+        const invoiceNumber = c.req.param('number');
+        const invoice = invoiceService.getInvoice(invoiceNumber);
+        
+        if (!invoice) {
+            return c.json({ error: 'Invoice not found' }, 404);
+        }
+        
+        const html = invoiceService.generateInvoiceHTML(invoice);
+        return new Response(html, {
+            headers: { 'Content-Type': 'text/html' }
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// =============================================
+// ===== 申报数据接口 =====
+// =============================================
+
+// 生成申报数据
+app.post('/api/v1/filings/generate', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const body = await c.req.json();
+        const { countryCode, period, transactionIds } = body;
+        
+        if (!countryCode || !period) {
+            return c.json({ error: 'Missing required parameters: countryCode, period' }, 400);
+        }
+        
+        // 获取交易数据
+        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
+        const params = [tenantId];
+        
+        if (transactionIds && transactionIds.length) {
+            query += ` AND id IN (${transactionIds.map(() => '?').join(',')})`;
+            params.push(...transactionIds);
+        }
+        if (countryCode) {
+            query += ' AND country = ?';
+            params.push(countryCode);
+        }
+        
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
+        
+        const filing = filingService.generateFilingData(
+            tenantId,
+            countryCode,
+            period,
+            results
+        );
+        
+        // 保存到数据库
+        await c.env.DB.prepare(
+            `INSERT INTO filings 
+            (filing_id, tenant_id, country, period, total_net, total_vat, total_gross, transaction_count, status, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))`
+        ).bind(
+            filing.filingId,
+            tenantId,
+            countryCode,
+            period,
+            filing.summary.totalNet,
+            filing.summary.totalVAT,
+            filing.summary.totalGross,
+            filing.summary.transactionCount,
+            'draft'
+        ).run();
+        
+        return c.json({ success: true, data: filing });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 获取申报列表（增强）
+app.get('/api/v1/filings', async (c) => {
+    try {
+        const tenantId = getTenantId(c);
+        const countryCode = c.req.query('country');
+        const period = c.req.query('period');
+        
+        let query = 'SELECT * FROM filings WHERE tenant_id = ?';
+        const params = [tenantId];
+        
+        if (countryCode) {
+            query += ' AND country = ?';
+            params.push(countryCode);
+        }
+        if (period) {
+            query += ' AND period = ?';
+            params.push(period);
+        }
+        
+        query += ' ORDER BY created_at DESC';
+        const { results } = await c.env.DB.prepare(query).bind(...params).all();
+        
+        return c.json({ success: true, data: results });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
+
+// 导出申报数据
+app.get('/api/v1/filings/:id/export/:format', async (c) => {
+    try {
+        const filingId = c.req.param('id');
+        const format = c.req.param('format') || 'json';
+        const tenantId = getTenantId(c);
+        
+        const filing = await c.env.DB.prepare(
+            'SELECT * FROM filings WHERE filing_id = ? AND tenant_id = ?'
+        ).bind(filingId, tenantId).first();
+        
+        if (!filing) {
+            return c.json({ error: 'Filing not found' }, 404);
+        }
+        
+        const { results } = await c.env.DB.prepare(
+            'SELECT * FROM transactions WHERE tenant_id = ? AND period = ? AND country = ?'
+        ).bind(tenantId, filing.period, filing.country).all();
+        
+        const filingData = {
+            filing,
+            transactions: results,
+            exportedAt: new Date().toISOString()
+        };
+        
+        let data, contentType, filename;
+        if (format === 'csv') {
+            const headers = ['Order ID', 'Country', 'Net Amount', 'VAT Amount', 'Gross Amount', 'Period'];
+            const rows = results.map(tx => [
+                tx.order_id,
+                tx.country,
+                tx.net_amount?.toFixed(2) || '0.00',
+                tx.vat_amount?.toFixed(2) || '0.00',
+                ((tx.net_amount || 0) + (tx.vat_amount || 0)).toFixed(2),
+                tx.period
+            ]);
+            data = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+            contentType = 'text/csv';
+            filename = `filing_${filingId}.csv`;
+        } else {
+            data = JSON.stringify(filingData, null, 2);
+            contentType = 'application/json';
+            filename = `filing_${filingId}.json`;
+        }
+        
+        return new Response(data, {
+            headers: {
+                'Content-Type': contentType,
+                'Content-Disposition': `attachment; filename="${filename}"`
+            }
+        });
+    } catch (error) {
+        return c.json({ error: error.message }, 400);
+    }
+});
 // =============================================
 // ===== Platform Config =====
 // =============================================
