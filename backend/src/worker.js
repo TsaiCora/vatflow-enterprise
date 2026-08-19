@@ -3,11 +3,12 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import * as bcrypt from 'bcryptjs'
 import { buildPushHTTPRequest } from '@pushforge/builder';
+
 const app = new Hono()
 app.use('*', cors())
 
 // =============================================
-// ===== 国家税率映射 =====
+// ===== Tax Rate Mapping =====
 // =============================================
 const TAX_RATES = {
     GB: 20, FR: 20, DE: 19, IT: 22, ES: 21,
@@ -30,17 +31,17 @@ const CURRENCY_MAP = {
 };
 
 const COUNTRY_NAME_MAP = {
-    GB: '英国', FR: '法国', DE: '德国', IT: '意大�?, ES: '西班�?,
-    NL: '荷兰', BE: '比利�?, PL: '波兰', SE: '瑞典', DK: '丹麦',
-    FI: '芬兰', IE: '爱尔�?, PT: '葡萄�?, AT: '奥地�?, NO: '挪威',
-    CH: '瑞士', RU: '俄罗�?, JP: '日本', KR: '韩国', SG: '新加�?,
-    MY: '马来西亚', TH: '泰国', VN: '越南', ID: '印度尼西�?, PH: '菲律�?,
-    IN: '印度', AU: '澳大利亚', NZ: '新西�?, CA: '加拿�?, US: '美国',
-    MX: '墨西�?, BR: '巴西', TR: '土耳其', AE: '阿联�?, ZA: '南非'
+    GB: 'United Kingdom', FR: 'France', DE: 'Germany', IT: 'Italy', ES: 'Spain',
+    NL: 'Netherlands', BE: 'Belgium', PL: 'Poland', SE: 'Sweden', DK: 'Denmark',
+    FI: 'Finland', IE: 'Ireland', PT: 'Portugal', AT: 'Austria', NO: 'Norway',
+    CH: 'Switzerland', RU: 'Russia', JP: 'Japan', KR: 'South Korea', SG: 'Singapore',
+    MY: 'Malaysia', TH: 'Thailand', VN: 'Vietnam', ID: 'Indonesia', PH: 'Philippines',
+    IN: 'India', AU: 'Australia', NZ: 'New Zealand', CA: 'Canada', US: 'United States',
+    MX: 'Mexico', BR: 'Brazil', TR: 'Turkey', AE: 'UAE', ZA: 'South Africa'
 };
 
 // =============================================
-// ===== 租户中间件（增强版） =====
+// ===== Tenant Middleware =====
 // =============================================
 app.use('*', async (c, next) => {
     const path = c.req.path;
@@ -77,7 +78,7 @@ const isAdmin = (c) => {
 };
 
 // =============================================
-// ===== 健康检�?=====
+// ===== Health Check =====
 // =============================================
 app.get('/health', (c) => {
     return c.json({
@@ -93,6 +94,8 @@ app.get('/', (c) => {
         docs: '/health',
         endpoints: [
             'POST /api/v1/auth/login',
+            'POST /api/v1/auth/forgot-password',
+            'POST /api/v1/auth/reset-password',
             'GET /api/v1/tenants',
             'POST /api/v1/tenants',
             'PUT /api/v1/tenants/:id',
@@ -120,19 +123,28 @@ app.get('/', (c) => {
             'GET /api/v1/tax/ecommerce-platforms',
             'POST /api/v1/files/upload',
             'GET /api/v1/files',
-            'DELETE /api/v1/files/:id'
+            'DELETE /api/v1/files/:id',
+            'GET /api/v1/tenants/:id/vat-expiry',
+            'PUT /api/v1/tenants/:id/vat-expiry/set',
+            'PUT /api/v1/tenants/:id/vat-extend',
+            'POST /api/v1/push/subscribe',
+            'POST /api/v1/push/unsubscribe',
+            'POST /api/v1/push/test',
+            'POST /api/v1/notifications/test',
+            'GET /api/v1/settings/notifications',
+            'POST /api/v1/settings/notifications'
         ]
     })
 })
 
 // =============================================
-// ===== 认证接口 =====
+// ===== Authentication =====
 // =============================================
 app.post('/api/v1/auth/login', async (c) => {
     try {
         const { email, password } = await c.req.json()
         if (!email || !password) {
-            return c.json({ error: '邮箱和密码不能为�? }, 400)
+            return c.json({ error: 'Email and password are required' }, 400)
         }
 
         const user = await c.env.DB.prepare(
@@ -140,22 +152,22 @@ app.post('/api/v1/auth/login', async (c) => {
         ).bind(email).first()
 
         if (!user) {
-            return c.json({ error: '邮箱或密码错�? }, 401)
+            return c.json({ error: 'Invalid email or password' }, 401)
         }
 
         if (user.status !== 'active') {
-            return c.json({ error: '账号已被禁用' }, 401)
+            return c.json({ error: 'Account is disabled' }, 401)
         }
 
         const valid = await bcrypt.compare(password, user.password_hash)
         if (!valid) {
-            return c.json({ error: '邮箱或密码错�? }, 401)
+            return c.json({ error: 'Invalid email or password' }, 401)
         }
 
         delete user.password_hash
         return c.json({
             success: true,
-            message: '登录成功',
+            message: 'Login successful',
             data: {
                 user,
                 token: 'dummy-token-' + Date.now()
@@ -163,44 +175,41 @@ app.post('/api/v1/auth/login', async (c) => {
         })
     } catch (error) {
         console.error('Login error:', error)
-        return c.json({ error: '登录失败' }, 500)
+        return c.json({ error: 'Login failed' }, 500)
     }
 })
+
 // =============================================
-// ===== 密码重置接口 =====
+// ===== Password Reset =====
 // =============================================
 
-// 1. 请求重置密码 - 发送重置邮�?
+// Request password reset
 app.post('/api/v1/auth/forgot-password', async (c) => {
     try {
         const { email } = await c.req.json();
 
         if (!email) {
-            return c.json({ error: '请输入邮箱地址' }, 400);
+            return c.json({ error: 'Email is required' }, 400);
         }
 
-        // 查找用户
         const user = await c.env.DB.prepare(
             'SELECT tenant_id, name, email FROM tenants WHERE email = ?'
         ).bind(email).first();
 
         if (!user) {
-            // 为了安全，不暴露用户是否存在
             return c.json({
                 success: true,
-                message: '如果该邮箱已注册，您将收到重置密码的邮件'
+                message: 'If the email is registered, you will receive a password reset email'
             });
         }
 
-        // 生成重置令牌
         const token = btoa(`${user.tenant_id}:${Date.now()}`);
         const resetLink = `https://vatflow.vatapex.com/reset-password?token=${token}&email=${email}`;
 
-        // 发送重置邮�?
         const resendApiKey = c.env.RESEND_API_KEY;
         if (!resendApiKey) {
-            console.error('�?RESEND_API_KEY 未配�?);
-            return c.json({ error: '邮件服务未配�? }, 500);
+            console.error('RESEND_API_KEY not configured');
+            return c.json({ error: 'Email service not configured' }, 500);
         }
 
         const emailResult = await fetch('https://api.resend.com/emails', {
@@ -213,7 +222,7 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
                 from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                 to: [email],
                 template: {
-                    id: '908b04c3-2b06-4135-9a95-712d872da7f6',  // Password Reset 模板ID
+                    id: '908b04c3-2b06-4135-9a95-712d872da7f6',
                     variables: {
                         userName: user.name,
                         resetLink: resetLink
@@ -224,82 +233,78 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
 
         if (!emailResult.ok) {
             const errorText = await emailResult.text();
-            console.error('�?邮件发送失�?', errorText);
-            return c.json({ error: '邮件发送失败，请稍后重�? }, 500);
+            console.error('Email send failed:', errorText);
+            return c.json({ error: 'Email send failed, please try again' }, 500);
         }
 
-        console.log(`📧 重置邮件已发送到: ${email}`);
+        console.log(`Password reset email sent to: ${email}`);
         return c.json({
             success: true,
-            message: '重置邮件已发送，请检查您的邮�?
+            message: 'Password reset email sent, please check your inbox'
         });
 
     } catch (error) {
-        console.error('�?请求重置密码失败:', error);
+        console.error('Forgot password error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// 2. 验证令牌并重置密�?
+// Reset password
 app.post('/api/v1/auth/reset-password', async (c) => {
     try {
         const { token, email, newPassword } = await c.req.json();
 
         if (!token || !email || !newPassword) {
-            return c.json({ error: '缺少必要参数' }, 400);
+            return c.json({ error: 'Missing required parameters' }, 400);
         }
 
         if (newPassword.length < 6) {
-            return c.json({ error: '密码长度至少�?�? }, 400);
+            return c.json({ error: 'Password must be at least 6 characters' }, 400);
         }
 
-        // 验证 token
         try {
             const decoded = atob(token);
             const [tenantId, timestamp] = decoded.split(':');
             const tokenTime = parseInt(timestamp);
             const currentTime = Date.now();
 
-            // 检查是否过期（1小时�?
             if (currentTime - tokenTime > 3600000) {
-                return c.json({ error: '重置链接已过期，请重新请�? }, 400);
+                return c.json({ error: 'Reset link has expired, please request again' }, 400);
             }
 
-            // 验证邮箱是否匹配
             const user = await c.env.DB.prepare(
                 'SELECT tenant_id FROM tenants WHERE email = ? AND tenant_id = ?'
             ).bind(email, tenantId).first();
 
             if (!user) {
-                return c.json({ error: '无效的重置链�? }, 400);
+                return c.json({ error: 'Invalid reset link' }, 400);
             }
 
-            // 加密新密�?
             const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-            // 更新密码
             await c.env.DB.prepare(
                 'UPDATE tenants SET password_hash = ? WHERE tenant_id = ?'
             ).bind(hashedPassword, tenantId).run();
 
-            console.log(`�?密码重置成功: ${email}`);
+            console.log(`Password reset successful: ${email}`);
             return c.json({
                 success: true,
-                message: '密码重置成功，请使用新密码登�?
+                message: 'Password reset successful, please login with new password'
             });
 
         } catch (decodeError) {
-            console.error('�?Token 解码失败:', decodeError);
-            return c.json({ error: '无效的重置链�? }, 400);
+            console.error('Token decode error:', decodeError);
+            return c.json({ error: 'Invalid reset link' }, 400);
         }
 
     } catch (error) {
-        console.error('�?重置密码失败:', error);
+        console.error('Reset password error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
+
 // =============================================
-// ===== 国家接口 =====
+// ===== Countries =====
 // =============================================
 app.get('/api/v1/countries', async (c) => {
     try {
@@ -313,7 +318,7 @@ app.get('/api/v1/countries', async (c) => {
 })
 
 // =============================================
-// ===== 平台接口 =====
+// ===== Platforms =====
 // =============================================
 app.get('/api/v1/platforms', async (c) => {
     try {
@@ -327,10 +332,10 @@ app.get('/api/v1/platforms', async (c) => {
 })
 
 // =============================================
-// ===== 租户接口（权限控�?+ VAT到期日期�?=====
+// ===== Tenants (with VAT expiry date) =====
 // =============================================
 
-// 获取所有租户（管理员看全部，普通租户只看自己）
+// Get all tenants
 app.get('/api/v1/tenants', async (c) => {
     try {
         const role = getUserRole(c);
@@ -355,7 +360,7 @@ app.get('/api/v1/tenants', async (c) => {
     }
 });
 
-// 获取单个租户
+// Get single tenant
 app.get('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id');
@@ -363,7 +368,7 @@ app.get('/api/v1/tenants/:id', async (c) => {
         const tenantId = getTenantId(c);
         
         if (role !== 'admin' && id !== tenantId) {
-            return c.json({ error: '无权访问其他租户数据' }, 403);
+            return c.json({ error: 'Access denied' }, 403);
         }
         
         const result = await c.env.DB.prepare(
@@ -371,7 +376,7 @@ app.get('/api/v1/tenants/:id', async (c) => {
         ).bind(id).first();
         
         if (!result) {
-            return c.json({ error: '租户不存�? }, 404);
+            return c.json({ error: 'Tenant not found' }, 404);
         }
         return c.json({ success: true, data: result });
     } catch (error) {
@@ -379,18 +384,18 @@ app.get('/api/v1/tenants/:id', async (c) => {
     }
 });
 
-// 创建租户
+// Create tenant
 app.post('/api/v1/tenants', async (c) => {
     try {
         const role = getUserRole(c);
         
         if (role !== 'admin') {
-            return c.json({ error: '权限不足，仅管理员可创建租户' }, 403);
+            return c.json({ error: 'Only admin can create tenants' }, 403);
         }
         
         const { tenant_id, name, email, password, company, country, vat_number, role: userRole } = await c.req.json();
         if (!tenant_id || !name || !email || !password) {
-            return c.json({ error: '缺少必填字段' }, 400)
+            return c.json({ error: 'Missing required fields' }, 400)
         }
 
         const hash = await bcrypt.hash(password, 10)
@@ -398,13 +403,13 @@ app.post('/api/v1/tenants', async (c) => {
             'INSERT INTO tenants (tenant_id, name, email, password_hash, company, country, vat_number, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))'
         ).bind(tenant_id, name, email, hash, company || '', country || 'GB', vat_number || '', userRole || 'user', 'active').run()
 
-        return c.json({ success: true, message: '租户创建成功', tenant_id })
+        return c.json({ success: true, message: 'Tenant created successfully', tenant_id })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 });
 
-// 更新租户
+// Update tenant
 app.put('/api/v1/tenants/:id', async (c) => {
     try {
         const id = c.req.param('id');
@@ -412,37 +417,37 @@ app.put('/api/v1/tenants/:id', async (c) => {
         const tenantId = getTenantId(c);
         
         if (role !== 'admin' && id !== tenantId) {
-            return c.json({ error: '无权修改其他租户数据' }, 403);
+            return c.json({ error: 'Access denied' }, 403);
         }
         
         const { name, email, company, country, vat_number, role: userRole, status } = await c.req.json()
         await c.env.DB.prepare(
             'UPDATE tenants SET name = ?, email = ?, company = ?, country = ?, vat_number = ?, role = ?, status = ? WHERE tenant_id = ?'
         ).bind(name, email, company || '', country || 'GB', vat_number || '', userRole || 'user', status || 'active', id).run()
-        return c.json({ success: true, message: '租户更新成功' })
+        return c.json({ success: true, message: 'Tenant updated successfully' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 });
 
-// 删除租户
+// Delete tenant
 app.delete('/api/v1/tenants/:id', async (c) => {
     try {
         const role = getUserRole(c);
         
         if (role !== 'admin') {
-            return c.json({ error: '权限不足，仅管理员可删除租户' }, 403);
+            return c.json({ error: 'Only admin can delete tenants' }, 403);
         }
         
         const id = c.req.param('id');
         await c.env.DB.prepare('DELETE FROM tenants WHERE tenant_id = ?').bind(id).run();
-        return c.json({ success: true, message: '租户删除成功' })
+        return c.json({ success: true, message: 'Tenant deleted successfully' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 });
 
-// 获取租户平台
+// Get tenant platforms
 app.get('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
@@ -450,7 +455,7 @@ app.get('/api/v1/tenants/:id/platforms', async (c) => {
         const tenantId = getTenantId(c);
         
         if (role !== 'admin' && id !== tenantId) {
-            return c.json({ error: '无权访问其他租户数据' }, 403)
+            return c.json({ error: 'Access denied' }, 403)
         }
         
         const { results } = await c.env.DB.prepare(
@@ -462,7 +467,7 @@ app.get('/api/v1/tenants/:id/platforms', async (c) => {
     }
 });
 
-// 绑定租户平台
+// Bind tenant platform
 app.post('/api/v1/tenants/:id/platforms', async (c) => {
     try {
         const id = c.req.param('id')
@@ -470,21 +475,21 @@ app.post('/api/v1/tenants/:id/platforms', async (c) => {
         const tenantId = getTenantId(c);
         
         if (role !== 'admin' && id !== tenantId) {
-            return c.json({ error: '无权修改其他租户数据' }, 403)
+            return c.json({ error: 'Access denied' }, 403)
         }
         
         const { platform_code, platform_account_id, api_key } = await c.req.json()
         await c.env.DB.prepare(
             'INSERT INTO tenant_platforms (tenant_id, platform_code, platform_account_id, api_key, is_active, connected_at) VALUES (?, ?, ?, ?, ?, datetime("now")) ON CONFLICT(tenant_id, platform_code) DO UPDATE SET platform_account_id = ?, api_key = ?, connected_at = datetime("now")'
         ).bind(id, platform_code, platform_account_id || '', api_key || '', 1, platform_account_id || '', api_key || '').run()
-        return c.json({ success: true, message: '平台绑定成功' })
+        return c.json({ success: true, message: 'Platform bound successfully' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 });
 
 // =============================================
-// ===== 申报记录 =====
+// ===== Filings =====
 // =============================================
 app.get('/api/v1/filings', async (c) => {
     try {
@@ -512,19 +517,19 @@ app.post('/api/v1/filings', async (c) => {
         const tenantId = getTenantId(c);
         const { period, country, total_net, total_vat, total_gross, transaction_count, status } = await c.req.json()
         if (!period) {
-            return c.json({ error: '缺少必填字段' }, 400)
+            return c.json({ error: 'Missing required fields' }, 400)
         }
         await c.env.DB.prepare(
             'INSERT INTO filings (tenant_id, period, country, total_net, total_vat, total_gross, transaction_count, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))'
         ).bind(tenantId, period, country || '', total_net || 0, total_vat || 0, total_gross || 0, transaction_count || 0, status || 'draft').run()
-        return c.json({ success: true, message: '申报记录创建成功' })
+        return c.json({ success: true, message: 'Filing record created successfully' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 })
 
 // =============================================
-// ===== VAT 资料 =====
+// ===== VAT Profiles =====
 // =============================================
 app.get('/api/v1/vat-profiles', async (c) => {
     try {
@@ -543,19 +548,19 @@ app.post('/api/v1/vat-profiles', async (c) => {
         const tenantId = getTenantId(c);
         const { vat_number, country, company_name, company_address, tax_rate, is_default } = await c.req.json()
         if (!vat_number || !country) {
-            return c.json({ error: '缺少必填字段' }, 400)
+            return c.json({ error: 'Missing required fields' }, 400)
         }
         await c.env.DB.prepare(
             'INSERT INTO vat_profiles (tenant_id, vat_number, country, company_name, company_address, tax_rate, is_default, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))'
         ).bind(tenantId, vat_number, country, company_name || '', company_address || '', tax_rate || 0, is_default || 0, 'active').run()
-        return c.json({ success: true, message: 'VAT资料创建成功' })
+        return c.json({ success: true, message: 'VAT profile created successfully' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 })
 
 // =============================================
-// ===== 交易记录（权限控制） =====
+// ===== Transactions =====
 // =============================================
 app.get('/api/v1/transactions', async (c) => {
     try {
@@ -597,26 +602,26 @@ app.post('/api/v1/transactions', async (c) => {
         const tenantId = getTenantId(c);
         const { order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity } = await c.req.json()
         if (!order_id) {
-            return c.json({ error: '缺少必填字段' }, 400)
+            return c.json({ error: 'Missing required fields' }, 400)
         }
         await c.env.DB.prepare(
             'INSERT INTO transactions (tenant_id, order_id, order_date, country, vat_number, net_amount, vat_amount, gross_amount, tax_rate, period, platform, status, product_sku, quantity, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"))'
         ).bind(tenantId, order_id, order_date || null, country || '', vat_number || '', net_amount || 0, vat_amount || 0, gross_amount || 0, tax_rate || 0, period || '', platform || '', status || 'pending', product_sku || '', quantity || 1).run()
-        return c.json({ success: true, message: '交易记录创建成功' })
+        return c.json({ success: true, message: 'Transaction created successfully' })
     } catch (error) {
         return c.json({ error: error.message }, 500)
     }
 })
 
 // =============================================
-// ===== 批量创建交易 =====
+// ===== Batch Create Transactions =====
 // =============================================
 app.post('/api/v1/transactions/batch', async (c) => {
     try {
         const tenantId = getTenantId(c);
         const transactions = await c.req.json();
         if (!transactions || !transactions.length) {
-            return c.json({ error: '没有数据' }, 400);
+            return c.json({ error: 'No data' }, 400);
         }
 
         let created = 0;
@@ -644,7 +649,7 @@ app.post('/api/v1/transactions/batch', async (c) => {
 
         return c.json({
             success: true,
-            message: `成功创建 ${created} 条交易记录`,
+            message: `Successfully created ${created} transactions`,
             count: created
         });
     } catch (error) {
@@ -653,7 +658,7 @@ app.post('/api/v1/transactions/batch', async (c) => {
 });
 
 // =============================================
-// ===== 交易统计（权限控制） =====
+// ===== Transaction Stats =====
 // =============================================
 app.get('/api/v1/transactions/stats', async (c) => {
     try {
@@ -688,10 +693,8 @@ app.get('/api/v1/transactions/stats', async (c) => {
 });
 
 // =============================================
-// ===== 系统设置接口（完整版�?=====
+// ===== Settings =====
 // =============================================
-
-// ===== 获取所有设�?=====
 app.get('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -724,7 +727,6 @@ app.get('/api/v1/settings', async (c) => {
             defaultCountry: 'GB',
             autoValidate: false,
             emailNotifications: false,
-            smsNotifications: false,
             pushNotifications: false,
             language: 'zh-CN',
             timezone: 'UTC+8',
@@ -736,18 +738,16 @@ app.get('/api/v1/settings', async (c) => {
             data: { ...defaultSettings, ...settings } 
         });
     } catch (error) {
-        console.error('�?获取设置失败:', error);
+        console.error('Get settings error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// ===== 保存设置 =====
 app.post('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
         const body = await c.req.json();
         
-        // 支持两种格式
         let settingsToSave = {};
         if (body.key && body.value) {
             settingsToSave = body.value;
@@ -768,16 +768,15 @@ app.post('/api/v1/settings', async (c) => {
         
         return c.json({ 
             success: true, 
-            message: '设置保存成功',
+            message: 'Settings saved successfully',
             data: settingsToSave
         });
     } catch (error) {
-        console.error('�?保存设置失败:', error);
+        console.error('Save settings error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// ===== 获取单个设置 =====
 app.get('/api/v1/settings/:key', async (c) => {
     try {
         const key = c.req.param('key');
@@ -798,14 +797,14 @@ app.get('/api/v1/settings/:key', async (c) => {
         
         return c.json({ success: true, data: { [key]: null } });
     } catch (error) {
-        console.error('�?获取设置失败:', error);
+        console.error('Get setting error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// ===== 通知设置接口 =====
-
-// ===== 获取通知设置（移除短信） =====
+// =============================================
+// ===== Notifications Settings =====
+// =============================================
 app.get('/api/v1/settings/notifications', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -833,12 +832,11 @@ app.get('/api/v1/settings/notifications', async (c) => {
         
         return c.json({ success: true, data: defaultSettings });
     } catch (error) {
-        console.error('�?获取通知设置失败:', error);
+        console.error('Get notifications settings error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// ===== 保存通知设置（移除短信） =====
 app.post('/api/v1/settings/notifications', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -853,29 +851,29 @@ app.post('/api/v1/settings/notifications', async (c) => {
         
         return c.json({ 
             success: true, 
-            message: '通知设置更新成功',
+            message: 'Notification settings updated successfully',
             data: settings
         });
     } catch (error) {
-        console.error('�?保存通知设置失败:', error);
+        console.error('Save notifications settings error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// ===== 发送测试通知（移除短信） =====
+// =============================================
+// ===== Test Notification =====
+// =============================================
 app.post('/api/v1/notifications/test', async (c) => {
     try {
         const tenantId = getTenantId(c);
         const { email } = await c.req.json();
         
-        // 获取用户信息
         const user = await c.env.DB.prepare(
             'SELECT email FROM tenants WHERE tenant_id = ?'
         ).bind(tenantId).first();
         
         const toEmail = email || user?.email || 'admin@vatflow.com';
         
-        // 获取通知设置
         const settingsResult = await c.env.DB.prepare(
             'SELECT setting_value FROM system_settings WHERE setting_key = ? AND (tenant_id = ? OR tenant_id IS NULL)'
         ).bind('notifications', tenantId).first();
@@ -896,16 +894,15 @@ app.post('/api/v1/notifications/test', async (c) => {
                 enabled: settings.emailNotifications,
                 sent: false,
                 to: toEmail,
-                message: settings.emailNotifications ? '邮件已发�? : '邮件通知未开�?
+                message: settings.emailNotifications ? 'Email sent' : 'Email notifications disabled'
             },
             push: {
                 enabled: settings.pushNotifications,
                 sent: false,
-                message: settings.pushNotifications ? '推送已发�? : '推送通知未开�?
+                message: settings.pushNotifications ? 'Push sent' : 'Push notifications disabled'
             }
         };
         
-        // 如果开启了邮件通知，尝试发�?
         if (settings.emailNotifications) {
             try {
                 const resendApiKey = c.env.RESEND_API_KEY;
@@ -919,36 +916,36 @@ app.post('/api/v1/notifications/test', async (c) => {
                         body: JSON.stringify({
                             from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                             to: [toEmail],
-                            subject: '🧪 VATFlow 测试通知',
+                            subject: 'VATFlow Test Notification',
                             html: `
-                                <h2>🧪 测试通知</h2>
-                                <p>您好，这是一条来�?VATFlow 系统的测试通知�?/p>
-                                <p>如果您收到此邮件，说明邮件通知功能配置正确�?/p>
-                                <p>发送时�? ${new Date().toLocaleString()}</p>
+                                <h2>Test Notification</h2>
+                                <p>Hello, this is a test notification from VATFlow system.</p>
+                                <p>If you receive this email, the email notification function is configured correctly.</p>
+                                <p>Sent at: ${new Date().toLocaleString()}</p>
                                 <hr>
-                                <p><a href="https://vatflow.vatapex.com">访问 VATFlow</a></p>
+                                <p><a href="https://vatflow.vatapex.com">Visit VATFlow</a></p>
                             `
                         })
                     });
                     
                     if (emailResult.ok) {
                         results.email.sent = true;
-                        results.email.message = '�?测试邮件已发�?;
+                        results.email.message = 'Test email sent successfully';
                     } else {
                         const errorText = await emailResult.text();
-                        results.email.message = '�?邮件发送失�? ' + errorText;
+                        results.email.message = 'Email send failed: ' + errorText;
                     }
                 } else {
-                    results.email.message = '⚠️ 邮件服务未配�?(缺少 RESEND_API_KEY)';
+                    results.email.message = 'RESEND_API_KEY not configured';
                 }
             } catch (emailError) {
-                results.email.message = '�?邮件发送失�? ' + emailError.message;
+                results.email.message = 'Email send failed: ' + emailError.message;
             }
         }
         
         return c.json({ 
             success: true, 
-            message: '测试通知完成',
+            message: 'Test notification completed',
             data: {
                 settings,
                 results,
@@ -956,13 +953,13 @@ app.post('/api/v1/notifications/test', async (c) => {
             }
         });
     } catch (error) {
-        console.error('�?测试通知失败:', error);
+        console.error('Test notification error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
 // =============================================
-// ===== Dashboard（权限控制） =====
+// ===== Dashboard =====
 // =============================================
 app.get('/api/v1/dashboard', async (c) => {
     try {
@@ -974,7 +971,7 @@ app.get('/api/v1/dashboard', async (c) => {
             const filingsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM filings').first();
             const transactionsCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM transactions').first();
             const recentActivities = await c.env.DB.prepare(
-                'SELECT "交易" as type, order_id as id, created_at FROM transactions ORDER BY created_at DESC LIMIT 5'
+                'SELECT "Transaction" as type, order_id as id, created_at FROM transactions ORDER BY created_at DESC LIMIT 5'
             ).all();
 
             return c.json({
@@ -998,7 +995,7 @@ app.get('/api/v1/dashboard', async (c) => {
             ).bind(tenantId).first();
             
             const recentActivities = await c.env.DB.prepare(
-                'SELECT "交易" as type, order_id as id, created_at FROM transactions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 5'
+                'SELECT "Transaction" as type, order_id as id, created_at FROM transactions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 5'
             ).bind(tenantId).all();
 
             return c.json({
@@ -1018,12 +1015,9 @@ app.get('/api/v1/dashboard', async (c) => {
     }
 })
 
-// backend/src/worker.js
 // =============================================
-// ===== 报告接口（含邮件通知�?=====
+// ===== Reports =====
 // =============================================
-
-// 获取报告列表
 app.get('/api/v1/reports', async (c) => {
     try {
         const role = getUserRole(c);
@@ -1046,7 +1040,6 @@ app.get('/api/v1/reports', async (c) => {
     }
 })
 
-// 生成报告
 app.post('/api/v1/reports/generate', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -1102,11 +1095,8 @@ app.post('/api/v1/reports/generate', async (c) => {
             'draft'
         ).run();
 
-        // =============================================
-        // ===== 发送报告生成通知邮件 =====
-        // =============================================
+        // Send report notification email
         try {
-            // 获取租户邮箱
             const tenant = await c.env.DB.prepare(
                 'SELECT email, name FROM tenants WHERE tenant_id = ?'
             ).bind(tenantId).first();
@@ -1124,9 +1114,9 @@ app.post('/api/v1/reports/generate', async (c) => {
                             from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                             to: [tenant.email],
                             template: {
-                                id: '43792e0e-dc3e-4098-bf2a-220a8c78a7ca',  // Report Ready Notification 模板ID
+                                id: '43792e0e-dc3e-4098-bf2a-220a8c78a7ca',
                                 variables: {
-                                    userName: tenant.name || '用户',
+                                    userName: tenant.name || 'User',
                                     reportId: reportId,
                                     period: filters?.period || 'N/A',
                                     totalVat: totalVat.toFixed(2),
@@ -1136,16 +1126,16 @@ app.post('/api/v1/reports/generate', async (c) => {
                             }
                         })
                     });
-                    console.log(`📧 报告生成通知已发送到: ${tenant.email}`);
+                    console.log(`Report notification sent to: ${tenant.email}`);
                 }
             }
         } catch (emailError) {
-            console.error('�?发送报告通知邮件失败:', emailError);
+            console.error('Send report notification email error:', emailError);
         }
 
         return c.json({
             success: true,
-            message: '报告生成成功',
+            message: 'Report generated successfully',
             reportId,
             data: {
                 id: reportId,
@@ -1160,91 +1150,18 @@ app.post('/api/v1/reports/generate', async (c) => {
     }
 })
 
-app.post('/api/v1/reports/generate', async (c) => {
-    try {
-        const tenantId = getTenantId(c);
-        const { transactionIds, filters } = await c.req.json();
-        
-        let query = 'SELECT * FROM transactions WHERE tenant_id = ?';
-        const params = [tenantId];
-        
-        if (transactionIds && transactionIds.length) {
-            query += ` AND id IN (${transactionIds.map(() => '?').join(',')})`;
-            params.push(...transactionIds);
-        }
-        if (filters?.country) {
-            query += ' AND country = ?';
-            params.push(filters.country);
-        }
-        if (filters?.platform) {
-            query += ' AND platform = ?';
-            params.push(filters.platform);
-        }
-        if (filters?.startDate) {
-            query += ' AND order_date >= ?';
-            params.push(filters.startDate);
-        }
-        if (filters?.endDate) {
-            query += ' AND order_date <= ?';
-            params.push(filters.endDate);
-        }
-
-        const { results } = await c.env.DB.prepare(query).bind(...params).all();
-        
-        let totalNet = 0, totalVat = 0, totalGross = 0;
-        results.forEach(t => {
-            totalNet += t.net_amount || 0;
-            totalVat += t.vat_amount || 0;
-            totalGross += t.gross_amount || 0;
-        });
-
-        const reportId = 'RPT-' + Date.now();
-        
-        await c.env.DB.prepare(
-            `INSERT INTO filings 
-            (filing_id, tenant_id, country, platform, period, total_net, total_vat, total_gross, transaction_count, status, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))`
-        ).bind(
-            reportId,
-            tenantId,
-            filters?.country || '',
-            filters?.platform || '',
-            filters?.period || '',
-            totalNet, totalVat, totalGross,
-            results.length,
-            'draft'
-        ).run();
-
-        return c.json({
-            success: true,
-            message: '报告生成成功',
-            reportId,
-            data: {
-                id: reportId,
-                totalNet,
-                totalVat,
-                totalGross,
-                transactionCount: results.length
-            }
-        })
-    } catch (error) {
-        return c.json({ error: error.message }, 500)
-    }
-})
-
-// backend/src/worker.js
 // =============================================
-// ===== 税务接口（含 PVA 递延增值税支持 + 邮件通知�?=====
+// ===== Tax Validation =====
 // =============================================
 app.post('/api/v1/tax/validate', async (c) => {
     try {
         const body = await c.req.json()
         const { vatNumber, amount, country, period, taxType, pvaReason, pvaReference } = body
 
-        console.log('📤 税务校验请求:', { vatNumber, amount, country, period, taxType })
+        console.log('Tax validation request:', { vatNumber, amount, country, period, taxType })
 
         if (!vatNumber || !country) {
-            return c.json({ success: false, error: 'VAT号码和国家为必填�? }, 400)
+            return c.json({ success: false, error: 'VAT number and country are required' }, 400)
         }
 
         const countryCode = country.toUpperCase()
@@ -1255,23 +1172,21 @@ app.post('/api/v1/tax/validate', async (c) => {
         const netAmount = amount || 0
         let vatAmount = netAmount * (taxRate / 100)
         let grossAmount = netAmount + vatAmount
-        let taxTypeLabel = '标准VAT'
+        let taxTypeLabel = 'Standard VAT'
 
-        // ===== PVA 递延增值税处理 =====
         if (taxType === 'pva') {
             vatAmount = 0
             grossAmount = netAmount
-            taxTypeLabel = '递延增值税 (PVA)'
-            console.log(`📋 PVA 递延: ${pvaReason || '未指�?}, 参考号: ${pvaReference || '�?}`)
+            taxTypeLabel = 'Deferred VAT (PVA)'
+            console.log(`PVA Deferred: ${pvaReason || 'Not specified'}, Reference: ${pvaReference || 'None'}`)
         }
 
         if (taxType === 'import') {
-            taxTypeLabel = '进口VAT'
+            taxTypeLabel = 'Import VAT'
         }
 
-        // VAT 号码格式验证
         let valid = true
-        let message = 'VAT 号码有效'
+        let message = 'VAT number is valid'
 
         const patterns = {
             'GB': /^GB\d{9,12}$/,
@@ -1314,24 +1229,21 @@ app.post('/api/v1/tax/validate', async (c) => {
         const pattern = patterns[countryCode]
         if (pattern && !pattern.test(vatNumber)) {
             valid = false
-            message = `VAT 号码格式无效，请使用 ${countryCode} 格式`
+            message = `Invalid VAT number format for ${countryCode}`
         }
 
         const additionalInfo = {}
         if (taxType === 'pva') {
-            additionalInfo.pvaReason = pvaReason || '未指�?
-            additionalInfo.pvaReference = pvaReference || '�?
+            additionalInfo.pvaReason = pvaReason || 'Not specified'
+            additionalInfo.pvaReference = pvaReference || 'None'
             additionalInfo.taxType = 'pva'
             additionalInfo.deferredVAT = vatAmount
         }
 
-        // =============================================
-        // ===== 发送税务校验通知邮件 =====
-        // =============================================
+        // Send tax validation notification email
         try {
             const tenantId = getTenantId(c);
             
-            // 获取租户邮箱
             const tenant = await c.env.DB.prepare(
                 'SELECT email, name FROM tenants WHERE tenant_id = ?'
             ).bind(tenantId).first();
@@ -1339,7 +1251,7 @@ app.post('/api/v1/tax/validate', async (c) => {
             if (tenant && tenant.email) {
                 const resendApiKey = c.env.RESEND_API_KEY;
                 if (resendApiKey) {
-                    const statusText = valid ? '�?通过' : '⚠️ 需复核';
+                    const statusText = valid ? 'Passed' : 'Needs Review';
                     
                     await fetch('https://api.resend.com/emails', {
                         method: 'POST',
@@ -1351,9 +1263,9 @@ app.post('/api/v1/tax/validate', async (c) => {
                             from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                             to: [tenant.email],
                             template: {
-                                id: '7239cbb6-8965-4883-82f7-b9685fd3b558',  // Tax Validation Notification 模板ID
+                                id: '7239cbb6-8965-4883-82f7-b9685fd3b558',
                                 variables: {
-                                    userName: tenant.name || '用户',
+                                    userName: tenant.name || 'User',
                                     vatNumber: vatNumber,
                                     country: countryName,
                                     status: statusText,
@@ -1363,12 +1275,11 @@ app.post('/api/v1/tax/validate', async (c) => {
                             }
                         })
                     });
-                    console.log(`📧 税务校验通知已发送到: ${tenant.email}`);
+                    console.log(`Tax validation notification sent to: ${tenant.email}`);
                 }
             }
         } catch (emailError) {
-            // 邮件发送失败不影响主流�?
-            console.error('�?发送税务校验通知邮件失败:', emailError);
+            console.error('Send tax validation notification email error:', emailError);
         }
 
         return c.json({
@@ -1391,18 +1302,17 @@ app.post('/api/v1/tax/validate', async (c) => {
             }
         })
     } catch (error) {
-        console.error('�?税务校验错误:', error)
-        return c.json({ success: false, error: error.message || '税务校验失败' }, 500)
+        console.error('Tax validation error:', error)
+        return c.json({ success: false, error: error.message || 'Tax validation failed' }, 500)
     }
 })
 
 // =============================================
-// ===== 税务平台列表（完整版�?=====
+// ===== Tax Platforms =====
 // =============================================
 app.get('/api/v1/tax/platforms', async (c) => {
     try {
         const platforms = [
-            // 电商平台�?0个）
             { id: 'amazon', name: 'Amazon', icon: 'amazon' },
             { id: 'ebay', name: 'eBay', icon: 'ebay' },
             { id: 'aliexpress', name: 'AliExpress', icon: 'aliexpress' },
@@ -1430,9 +1340,6 @@ app.get('/api/v1/tax/platforms', async (c) => {
     }
 })
 
-// =============================================
-// ===== 电商平台与支持的国家列表（完整版�?=====
-// =============================================
 app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
     try {
         const platforms = [
@@ -1464,7 +1371,7 @@ app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
 })
 
 // =============================================
-// ===== 平台配置 =====
+// ===== Platform Config =====
 // =============================================
 const PLATFORM_CONFIG = {
     amazon: { countryMode: 'auto', defaultCountry: null },
@@ -1490,7 +1397,7 @@ const PLATFORM_CONFIG = {
 };
 
 // =============================================
-// ===== 国家映射�?=====
+// ===== Country Mapping =====
 // =============================================
 const COUNTRY_MAP = {
     'UK': 'GB', 'UNITED KINGDOM': 'GB', 'GB': 'GB',
@@ -1509,7 +1416,7 @@ const COUNTRY_MAP = {
     'AUSTRIA': 'AT', 'AT': 'AT',
     'NORWAY': 'NO', 'NO': 'NO',
     'SWITZERLAND': 'CH', 'CH': 'CH',
-    'JAPAN': 'JP', 
+    'JAPAN': 'JP',
     'SINGAPORE': 'SG', 'SG': 'SG',
     'MALAYSIA': 'MY', 'MY': 'MY',
     'THAILAND': 'TH', 'TH': 'TH',
@@ -1523,7 +1430,7 @@ const COUNTRY_MAP = {
 };
 
 // =============================================
-// ===== 文件上传接口 =====
+// ===== File Upload =====
 // =============================================
 app.post('/api/v1/files/upload', async (c) => {
     try {
@@ -1536,7 +1443,7 @@ app.post('/api/v1/files/upload', async (c) => {
         const userCountry = body['country'] || 'GB';
 
         if (!files) {
-            return c.json({ error: '没有文件' }, 400);
+            return c.json({ error: 'No files' }, 400);
         }
 
         const platformConfig = PLATFORM_CONFIG[platform] || { countryMode: 'manual', defaultCountry: 'GB' };
@@ -1660,7 +1567,7 @@ app.post('/api/v1/files/upload', async (c) => {
 
         return c.json({
             success: true,
-            message: `上传成功，解�?${transactions.length} 条记录，保存 ${created} 条`,
+            message: `Upload successful, parsed ${transactions.length} records, saved ${created} records`,
             data: {
                 processed: transactions.length,
                 saved: created,
@@ -1669,13 +1576,13 @@ app.post('/api/v1/files/upload', async (c) => {
             }
         });
     } catch (error) {
-        console.error('�?文件上传错误:', error);
+        console.error('File upload error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
 // =============================================
-// ===== 获取文件列表 =====
+// ===== Get Files =====
 // =============================================
 app.get('/api/v1/files', async (c) => {
     try {
@@ -1711,7 +1618,7 @@ app.get('/api/v1/files', async (c) => {
 });
 
 // =============================================
-// ===== 删除文件/交易 =====
+// ===== Delete File =====
 // =============================================
 app.delete('/api/v1/files/:id', async (c) => {
     try {
@@ -1723,32 +1630,31 @@ app.delete('/api/v1/files/:id', async (c) => {
         ).bind(id).first();
         
         if (!file) {
-            return c.json({ error: '文件不存�? }, 404);
+            return c.json({ error: 'File not found' }, 404);
         }
         
         if (file.tenant_id !== tenantId) {
-            return c.json({ error: '无权删除此文�? }, 403);
+            return c.json({ error: 'Access denied' }, 403);
         }
         
         await c.env.DB.prepare('DELETE FROM transactions WHERE tenant_id = ? AND id = ?').bind(tenantId, id).run();
-        return c.json({ success: true, message: '删除成功' });
+        return c.json({ success: true, message: 'Deleted successfully' });
     } catch (error) {
         return c.json({ error: error.message }, 500);
     }
 });
 
 // =============================================
-// ===== 推送订阅接�?=====
+// ===== Push Notifications =====
 // =============================================
 
-// 保存推送订�?
 app.post('/api/v1/push/subscribe', async (c) => {
     try {
         const tenantId = getTenantId(c);
         const subscription = await c.req.json();
 
         if (!subscription || !subscription.endpoint) {
-            return c.json({ error: '无效的订阅信�? }, 400);
+            return c.json({ error: 'Invalid subscription' }, 400);
         }
 
         await c.env.DB.prepare(
@@ -1764,22 +1670,21 @@ app.post('/api/v1/push/subscribe', async (c) => {
 
         return c.json({
             success: true,
-            message: '订阅成功'
+            message: 'Subscribed successfully'
         });
     } catch (error) {
-        console.error('�?订阅保存失败:', error);
+        console.error('Subscribe error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// 取消订阅
 app.post('/api/v1/push/unsubscribe', async (c) => {
     try {
         const tenantId = getTenantId(c);
         const { endpoint } = await c.req.json();
 
         if (!endpoint) {
-            return c.json({ error: '缺少 endpoint' }, 400);
+            return c.json({ error: 'Missing endpoint' }, 400);
         }
 
         await c.env.DB.prepare(
@@ -1788,15 +1693,14 @@ app.post('/api/v1/push/unsubscribe', async (c) => {
 
         return c.json({
             success: true,
-            message: '取消订阅成功'
+            message: 'Unsubscribed successfully'
         });
     } catch (error) {
-        console.error('�?取消订阅失败:', error);
+        console.error('Unsubscribe error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// 发送测试推�?
 app.post('/api/v1/push/test', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -1808,7 +1712,7 @@ app.post('/api/v1/push/test', async (c) => {
         if (!results || results.length === 0) {
             return c.json({
                 success: false,
-                message: '没有订阅用户',
+                message: 'No subscribed users',
                 data: { sent: 0 }
             });
         }
@@ -1817,7 +1721,7 @@ app.post('/api/v1/push/test', async (c) => {
         if (!vapidPrivateKey) {
             return c.json({
                 success: false,
-                message: 'VAPID_PRIVATE_KEY 未配�?
+                message: 'VAPID_PRIVATE_KEY not configured'
             }, 500);
         }
 
@@ -1836,8 +1740,8 @@ app.post('/api/v1/push/test', async (c) => {
                     subscription: subscription,
                     message: {
                         payload: {
-                            title: '🧪 测试推�?,
-                            body: `这是来自 VATFlow 的测试推送通知！时�? ${new Date().toLocaleString()}`,
+                            title: 'Test Push',
+                            body: `This is a test push notification from VATFlow! Time: ${new Date().toLocaleString()}`,
                             icon: '/favicon.ico',
                             url: '/dashboard'
                         },
@@ -1866,29 +1770,26 @@ app.post('/api/v1/push/test', async (c) => {
                     }
                 }
             } catch (err) {
-                console.error('�?推送发送失�?', err);
+                console.error('Push send error:', err);
                 failed++;
             }
         }
 
         return c.json({
             success: true,
-            message: '推送测试完�?,
+            message: 'Push test completed',
             data: { sent, failed, total: results.length }
         });
     } catch (error) {
-        console.error('�?测试推送失�?', error);
+        console.error('Push test error:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// backend/src/worker.js
-
 // =============================================
-// ===== VAT 到期日期管理接口 =====
+// ===== VAT Expiry Management =====
 // =============================================
 
-// 获取 VAT 到期日期
 app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     try {
         const tenantId = c.req.param('id');
@@ -1896,7 +1797,7 @@ app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
         const role = getUserRole(c);
         
         if (role !== 'admin' && tenantId !== currentTenantId) {
-            return c.json({ error: '无权查看其他租户信息' }, 403);
+            return c.json({ error: 'Access denied' }, 403);
         }
         
         const result = await c.env.DB.prepare(
@@ -1915,20 +1816,19 @@ app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     }
 });
 
-// 设置 VAT 到期日期（仅管理�?- 首次设置�?
 app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
     try {
         const tenantId = c.req.param('id');
         const role = getUserRole(c);
         
         if (role !== 'admin') {
-            return c.json({ error: '权限不足，仅管理员可设置' }, 403);
+            return c.json({ error: 'Only admin can set VAT expiry date' }, 403);
         }
         
         const { vatExpiryDate } = await c.req.json();
         
         if (!vatExpiryDate) {
-            return c.json({ error: '请输入到期日�? }, 400);
+            return c.json({ error: 'Expiry date is required' }, 400);
         }
         
         await c.env.DB.prepare(
@@ -1937,7 +1837,7 @@ app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
         
         return c.json({
             success: true,
-            message: 'VAT到期日期设置成功',
+            message: 'VAT expiry date set successfully',
             data: { vatExpiryDate }
         });
     } catch (error) {
@@ -1945,14 +1845,13 @@ app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
     }
 });
 
-// 续期（仅管理员，记录合同/转账信息�?
 app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
     try {
         const tenantId = c.req.param('id');
         const role = getUserRole(c);
         
         if (role !== 'admin') {
-            return c.json({ error: '权限不足，仅管理员可续期' }, 403);
+            return c.json({ error: 'Only admin can extend VAT' }, 403);
         }
         
         const { extendYears = 1, contractNumber, paymentDate, paymentAmount } = await c.req.json();
@@ -1996,7 +1895,7 @@ app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
         
         return c.json({
             success: true,
-            message: `�?VAT已续�?${extendYears} 年`,
+            message: `VAT extended by ${extendYears} year(s)`,
             data: {
                 oldExpiryDate: current?.vat_expiry_date || null,
                 newExpiryDate: newExpiryDate,
@@ -2010,32 +1909,31 @@ app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
         return c.json({ error: error.message }, 500);
     }
 });
+
 // =============================================
-// ===== 发�?VAT 到期提醒邮件（使�?Resend 模板�?=====
+// ===== VAT Expiry Email Reminder =====
 // =============================================
 async function sendVatExpiryEmail(env, tenant, daysRemaining) {
     try {
         const resendApiKey = env.RESEND_API_KEY;
         if (!resendApiKey) {
-            console.log('⚠️ RESEND_API_KEY 未配�?);
+            console.log('RESEND_API_KEY not configured');
             return;
         }
 
-        // 判断紧急程�?
         let urgency = '';
         if (daysRemaining <= 1) {
-            urgency = '🔴 紧�?;
+            urgency = 'Emergency';
         } else if (daysRemaining <= 7) {
-            urgency = '🟠 即将到期';
+            urgency = 'Expiring Soon';
         } else if (daysRemaining <= 30) {
-            urgency = '🟡 需要注�?;
+            urgency = 'Attention Needed';
         } else {
-            urgency = '🟢 准备�?;
+            urgency = 'Preparing';
         }
 
         const fromEmail = env.FROM_EMAIL || 'noreply@mail.vatapex.com';
         
-        // ===== 使用 Resend 模板发�?=====
         const response = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
@@ -2046,13 +1944,13 @@ async function sendVatExpiryEmail(env, tenant, daysRemaining) {
                 from: fromEmail,
                 to: [tenant.email],
                 template: {
-                    id: '690766c3-17cc-4dc8-9d81-d15e898418d5',  // VAT Expiry Reminder 模板ID
+                    id: '690766c3-17cc-4dc8-9d81-d15e898418d5',
                     variables: {
-                        tenantName: tenant.name || '租户',
+                        tenantName: tenant.name || 'Tenant',
                         companyName: tenant.company || '-',
                         daysRemaining: daysRemaining,
                         urgency: urgency,
-                        expiryDate: tenant.vat_expiry_date || '未设�?,
+                        expiryDate: tenant.vat_expiry_date || 'Not set',
                         link: 'https://vatflow.vatapex.com/tenants'
                     }
                 }
@@ -2061,19 +1959,20 @@ async function sendVatExpiryEmail(env, tenant, daysRemaining) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('�?邮件发送失�?', errorText);
+            console.error('Email send failed:', errorText);
         } else {
-            console.log(`📧 VAT到期提醒已发送到: ${tenant.email} (${daysRemaining}天后到期)`);
+            console.log(`VAT expiry reminder sent to: ${tenant.email} (${daysRemaining} days remaining)`);
         }
     } catch (error) {
-        console.error('�?发送VAT到期提醒邮件失败:', error);
+        console.error('Send VAT expiry email error:', error);
     }
 }
+
 // =============================================
-// ===== 定时任务函数（放在这里） =====
+// ===== Scheduled Task =====
 // =============================================
 async function checkVatExpiry(env) {
-    console.log('🔍 开始检查VAT到期日期...');
+    console.log('Checking VAT expiry dates...');
     
     const today = new Date().toISOString().split('T')[0];
     const ninetyDaysLater = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -2086,7 +1985,7 @@ async function checkVatExpiry(env) {
              AND vat_expiry_date BETWEEN ? AND ?`
         ).bind(today, ninetyDaysLater).all();
 
-        console.log(`📊 找到 ${results.length} 个即将到期的租户`);
+        console.log(`Found ${results.length} tenants with expiring VAT`);
 
         const reminderDays = [90, 60, 30, 15, 7, 3, 1];
 
@@ -2118,38 +2017,38 @@ async function checkVatExpiry(env) {
                     'UPDATE tenants SET last_vat_reminder_sent = ? WHERE tenant_id = ?'
                 ).bind(newLastReminder, tenant.tenant_id).run();
                 
-                console.log(`�?已发送提醒给 ${tenant.name} (${daysRemaining}天后到期)`);
+                console.log(`Sent reminder to ${tenant.name} (${daysRemaining} days remaining)`);
             }
         }
 
-        console.log('�?VAT到期检查完�?);
+        console.log('VAT expiry check completed');
     } catch (error) {
-        console.error('�?VAT到期检查失�?', error);
+        console.error('VAT expiry check error:', error);
     }
 }
 
 // =============================================
-// ===== 404 =====
+// ===== 404 Handler =====
 // =============================================
 app.notFound((c) => {
-    return c.json({ error: '接口不存�? }, 404)
+    return c.json({ error: 'Endpoint not found' }, 404)
 })
 
 // =============================================
-// ===== 错误处理 =====
+// ===== Error Handler =====
 // =============================================
 app.onError((err, c) => {
     console.error('Error:', err)
-    return c.json({ error: err.message || '服务器错�? }, 500)
+    return c.json({ error: err.message || 'Server error' }, 500)
 })
 
 // =============================================
-// ===== 导出（定时任务触发） =====
+// ===== Export =====
 // =============================================
 export default {
     fetch: app.fetch,
     async scheduled(event, env, ctx) {
-        console.log(`🕐 定时任务触发: ${event.cron}`);
+        console.log(`Scheduled task triggered: ${event.cron}`);
         await checkVatExpiry(env);
     }
 };
