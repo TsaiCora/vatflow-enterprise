@@ -30,13 +30,13 @@ const CURRENCY_MAP = {
 };
 
 const COUNTRY_NAME_MAP = {
-    GB: '英国', FR: '法国', DE: '德国', IT: '意大利', ES: '西班牙',
-    NL: '荷兰', BE: '比利时', PL: '波兰', SE: '瑞典', DK: '丹麦',
-    FI: '芬兰', IE: '爱尔兰', PT: '葡萄牙', AT: '奥地利', NO: '挪威',
-    CH: '瑞士', RU: '俄罗斯', JP: '日本', KR: '韩国', SG: '新加坡',
-    MY: '马来西亚', TH: '泰国', VN: '越南', ID: '印度尼西亚', PH: '菲律宾',
-    IN: '印度', AU: '澳大利亚', NZ: '新西兰', CA: '加拿大', US: '美国',
-    MX: '墨西哥', BR: '巴西', TR: '土耳其', AE: '阿联酋', ZA: '南非'
+    GB: '英国', FR: '法国', DE: '德国', IT: '意大�?, ES: '西班�?,
+    NL: '荷兰', BE: '比利�?, PL: '波兰', SE: '瑞典', DK: '丹麦',
+    FI: '芬兰', IE: '爱尔�?, PT: '葡萄�?, AT: '奥地�?, NO: '挪威',
+    CH: '瑞士', RU: '俄罗�?, JP: '日本', KR: '韩国', SG: '新加�?,
+    MY: '马来西亚', TH: '泰国', VN: '越南', ID: '印度尼西�?, PH: '菲律�?,
+    IN: '印度', AU: '澳大利亚', NZ: '新西�?, CA: '加拿�?, US: '美国',
+    MX: '墨西�?, BR: '巴西', TR: '土耳其', AE: '阿联�?, ZA: '南非'
 };
 
 // =============================================
@@ -77,7 +77,7 @@ const isAdmin = (c) => {
 };
 
 // =============================================
-// ===== 健康检查 =====
+// ===== 健康检�?=====
 // =============================================
 app.get('/health', (c) => {
     return c.json({
@@ -132,7 +132,7 @@ app.post('/api/v1/auth/login', async (c) => {
     try {
         const { email, password } = await c.req.json()
         if (!email || !password) {
-            return c.json({ error: '邮箱和密码不能为空' }, 400)
+            return c.json({ error: '邮箱和密码不能为�? }, 400)
         }
 
         const user = await c.env.DB.prepare(
@@ -140,7 +140,7 @@ app.post('/api/v1/auth/login', async (c) => {
         ).bind(email).first()
 
         if (!user) {
-            return c.json({ error: '邮箱或密码错误' }, 401)
+            return c.json({ error: '邮箱或密码错�? }, 401)
         }
 
         if (user.status !== 'active') {
@@ -149,7 +149,7 @@ app.post('/api/v1/auth/login', async (c) => {
 
         const valid = await bcrypt.compare(password, user.password_hash)
         if (!valid) {
-            return c.json({ error: '邮箱或密码错误' }, 401)
+            return c.json({ error: '邮箱或密码错�? }, 401)
         }
 
         delete user.password_hash
@@ -170,7 +170,7 @@ app.post('/api/v1/auth/login', async (c) => {
 // ===== 密码重置接口 =====
 // =============================================
 
-// 1. 请求重置密码 - 发送重置邮件
+// 1. 请求重置密码 - 发送重置邮�?
 app.post('/api/v1/auth/forgot-password', async (c) => {
     try {
         const { email } = await c.req.json();
@@ -196,11 +196,11 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
         const token = btoa(`${user.tenant_id}:${Date.now()}`);
         const resetLink = `https://vatflow.vatapex.com/reset-password?token=${token}&email=${email}`;
 
-        // 发送重置邮件
+        // 发送重置邮�?
         const resendApiKey = c.env.RESEND_API_KEY;
         if (!resendApiKey) {
-            console.error('❌ RESEND_API_KEY 未配置');
-            return c.json({ error: '邮件服务未配置' }, 500);
+            console.error('�?RESEND_API_KEY 未配�?);
+            return c.json({ error: '邮件服务未配�? }, 500);
         }
 
         const emailResult = await fetch('https://api.resend.com/emails', {
@@ -210,7 +210,7 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
                 'Authorization': `Bearer ${resendApiKey}`
             },
             body: JSON.stringify({
-                from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                 to: [email],
                 template: {
                     id: '908b04c3-2b06-4135-9a95-712d872da7f6',  // Password Reset 模板ID
@@ -224,23 +224,23 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
 
         if (!emailResult.ok) {
             const errorText = await emailResult.text();
-            console.error('❌ 邮件发送失败:', errorText);
-            return c.json({ error: '邮件发送失败，请稍后重试' }, 500);
+            console.error('�?邮件发送失�?', errorText);
+            return c.json({ error: '邮件发送失败，请稍后重�? }, 500);
         }
 
         console.log(`📧 重置邮件已发送到: ${email}`);
         return c.json({
             success: true,
-            message: '重置邮件已发送，请检查您的邮箱'
+            message: '重置邮件已发送，请检查您的邮�?
         });
 
     } catch (error) {
-        console.error('❌ 请求重置密码失败:', error);
+        console.error('�?请求重置密码失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// 2. 验证令牌并重置密码
+// 2. 验证令牌并重置密�?
 app.post('/api/v1/auth/reset-password', async (c) => {
     try {
         const { token, email, newPassword } = await c.req.json();
@@ -250,7 +250,7 @@ app.post('/api/v1/auth/reset-password', async (c) => {
         }
 
         if (newPassword.length < 6) {
-            return c.json({ error: '密码长度至少为6位' }, 400);
+            return c.json({ error: '密码长度至少�?�? }, 400);
         }
 
         // 验证 token
@@ -260,9 +260,9 @@ app.post('/api/v1/auth/reset-password', async (c) => {
             const tokenTime = parseInt(timestamp);
             const currentTime = Date.now();
 
-            // 检查是否过期（1小时）
+            // 检查是否过期（1小时�?
             if (currentTime - tokenTime > 3600000) {
-                return c.json({ error: '重置链接已过期，请重新请求' }, 400);
+                return c.json({ error: '重置链接已过期，请重新请�? }, 400);
             }
 
             // 验证邮箱是否匹配
@@ -271,10 +271,10 @@ app.post('/api/v1/auth/reset-password', async (c) => {
             ).bind(email, tenantId).first();
 
             if (!user) {
-                return c.json({ error: '无效的重置链接' }, 400);
+                return c.json({ error: '无效的重置链�? }, 400);
             }
 
-            // 加密新密码
+            // 加密新密�?
             const hashedPassword = await bcrypt.hash(newPassword, 10);
 
             // 更新密码
@@ -282,19 +282,19 @@ app.post('/api/v1/auth/reset-password', async (c) => {
                 'UPDATE tenants SET password_hash = ? WHERE tenant_id = ?'
             ).bind(hashedPassword, tenantId).run();
 
-            console.log(`✅ 密码重置成功: ${email}`);
+            console.log(`�?密码重置成功: ${email}`);
             return c.json({
                 success: true,
-                message: '密码重置成功，请使用新密码登录'
+                message: '密码重置成功，请使用新密码登�?
             });
 
         } catch (decodeError) {
-            console.error('❌ Token 解码失败:', decodeError);
-            return c.json({ error: '无效的重置链接' }, 400);
+            console.error('�?Token 解码失败:', decodeError);
+            return c.json({ error: '无效的重置链�? }, 400);
         }
 
     } catch (error) {
-        console.error('❌ 重置密码失败:', error);
+        console.error('�?重置密码失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -327,7 +327,7 @@ app.get('/api/v1/platforms', async (c) => {
 })
 
 // =============================================
-// ===== 租户接口（权限控制 + VAT到期日期） =====
+// ===== 租户接口（权限控�?+ VAT到期日期�?=====
 // =============================================
 
 // 获取所有租户（管理员看全部，普通租户只看自己）
@@ -371,7 +371,7 @@ app.get('/api/v1/tenants/:id', async (c) => {
         ).bind(id).first();
         
         if (!result) {
-            return c.json({ error: '租户不存在' }, 404);
+            return c.json({ error: '租户不存�? }, 404);
         }
         return c.json({ success: true, data: result });
     } catch (error) {
@@ -688,10 +688,10 @@ app.get('/api/v1/transactions/stats', async (c) => {
 });
 
 // =============================================
-// ===== 系统设置接口（完整版） =====
+// ===== 系统设置接口（完整版�?=====
 // =============================================
 
-// ===== 获取所有设置 =====
+// ===== 获取所有设�?=====
 app.get('/api/v1/settings', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -736,7 +736,7 @@ app.get('/api/v1/settings', async (c) => {
             data: { ...defaultSettings, ...settings } 
         });
     } catch (error) {
-        console.error('❌ 获取设置失败:', error);
+        console.error('�?获取设置失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -772,7 +772,7 @@ app.post('/api/v1/settings', async (c) => {
             data: settingsToSave
         });
     } catch (error) {
-        console.error('❌ 保存设置失败:', error);
+        console.error('�?保存设置失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -798,7 +798,7 @@ app.get('/api/v1/settings/:key', async (c) => {
         
         return c.json({ success: true, data: { [key]: null } });
     } catch (error) {
-        console.error('❌ 获取设置失败:', error);
+        console.error('�?获取设置失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -833,7 +833,7 @@ app.get('/api/v1/settings/notifications', async (c) => {
         
         return c.json({ success: true, data: defaultSettings });
     } catch (error) {
-        console.error('❌ 获取通知设置失败:', error);
+        console.error('�?获取通知设置失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -857,7 +857,7 @@ app.post('/api/v1/settings/notifications', async (c) => {
             data: settings
         });
     } catch (error) {
-        console.error('❌ 保存通知设置失败:', error);
+        console.error('�?保存通知设置失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -896,16 +896,16 @@ app.post('/api/v1/notifications/test', async (c) => {
                 enabled: settings.emailNotifications,
                 sent: false,
                 to: toEmail,
-                message: settings.emailNotifications ? '邮件已发送' : '邮件通知未开启'
+                message: settings.emailNotifications ? '邮件已发�? : '邮件通知未开�?
             },
             push: {
                 enabled: settings.pushNotifications,
                 sent: false,
-                message: settings.pushNotifications ? '推送已发送' : '推送通知未开启'
+                message: settings.pushNotifications ? '推送已发�? : '推送通知未开�?
             }
         };
         
-        // 如果开启了邮件通知，尝试发送
+        // 如果开启了邮件通知，尝试发�?
         if (settings.emailNotifications) {
             try {
                 const resendApiKey = c.env.RESEND_API_KEY;
@@ -917,14 +917,14 @@ app.post('/api/v1/notifications/test', async (c) => {
                             'Authorization': `Bearer ${resendApiKey}`
                         },
                         body: JSON.stringify({
-                            from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                            from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                             to: [toEmail],
                             subject: '🧪 VATFlow 测试通知',
                             html: `
                                 <h2>🧪 测试通知</h2>
-                                <p>您好，这是一条来自 VATFlow 系统的测试通知。</p>
-                                <p>如果您收到此邮件，说明邮件通知功能配置正确。</p>
-                                <p>发送时间: ${new Date().toLocaleString()}</p>
+                                <p>您好，这是一条来�?VATFlow 系统的测试通知�?/p>
+                                <p>如果您收到此邮件，说明邮件通知功能配置正确�?/p>
+                                <p>发送时�? ${new Date().toLocaleString()}</p>
                                 <hr>
                                 <p><a href="https://vatflow.vatapex.com">访问 VATFlow</a></p>
                             `
@@ -933,16 +933,16 @@ app.post('/api/v1/notifications/test', async (c) => {
                     
                     if (emailResult.ok) {
                         results.email.sent = true;
-                        results.email.message = '✅ 测试邮件已发送';
+                        results.email.message = '�?测试邮件已发�?;
                     } else {
                         const errorText = await emailResult.text();
-                        results.email.message = '❌ 邮件发送失败: ' + errorText;
+                        results.email.message = '�?邮件发送失�? ' + errorText;
                     }
                 } else {
-                    results.email.message = '⚠️ 邮件服务未配置 (缺少 RESEND_API_KEY)';
+                    results.email.message = '⚠️ 邮件服务未配�?(缺少 RESEND_API_KEY)';
                 }
             } catch (emailError) {
-                results.email.message = '❌ 邮件发送失败: ' + emailError.message;
+                results.email.message = '�?邮件发送失�? ' + emailError.message;
             }
         }
         
@@ -956,7 +956,7 @@ app.post('/api/v1/notifications/test', async (c) => {
             }
         });
     } catch (error) {
-        console.error('❌ 测试通知失败:', error);
+        console.error('�?测试通知失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -1020,7 +1020,7 @@ app.get('/api/v1/dashboard', async (c) => {
 
 // backend/src/worker.js
 // =============================================
-// ===== 报告接口（含邮件通知） =====
+// ===== 报告接口（含邮件通知�?=====
 // =============================================
 
 // 获取报告列表
@@ -1121,7 +1121,7 @@ app.post('/api/v1/reports/generate', async (c) => {
                             'Authorization': `Bearer ${resendApiKey}`
                         },
                         body: JSON.stringify({
-                            from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                            from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                             to: [tenant.email],
                             template: {
                                 id: '43792e0e-dc3e-4098-bf2a-220a8c78a7ca',  // Report Ready Notification 模板ID
@@ -1140,7 +1140,7 @@ app.post('/api/v1/reports/generate', async (c) => {
                 }
             }
         } catch (emailError) {
-            console.error('❌ 发送报告通知邮件失败:', emailError);
+            console.error('�?发送报告通知邮件失败:', emailError);
         }
 
         return c.json({
@@ -1234,7 +1234,7 @@ app.post('/api/v1/reports/generate', async (c) => {
 
 // backend/src/worker.js
 // =============================================
-// ===== 税务接口（含 PVA 递延增值税支持 + 邮件通知） =====
+// ===== 税务接口（含 PVA 递延增值税支持 + 邮件通知�?=====
 // =============================================
 app.post('/api/v1/tax/validate', async (c) => {
     try {
@@ -1244,7 +1244,7 @@ app.post('/api/v1/tax/validate', async (c) => {
         console.log('📤 税务校验请求:', { vatNumber, amount, country, period, taxType })
 
         if (!vatNumber || !country) {
-            return c.json({ success: false, error: 'VAT号码和国家为必填项' }, 400)
+            return c.json({ success: false, error: 'VAT号码和国家为必填�? }, 400)
         }
 
         const countryCode = country.toUpperCase()
@@ -1262,7 +1262,7 @@ app.post('/api/v1/tax/validate', async (c) => {
             vatAmount = 0
             grossAmount = netAmount
             taxTypeLabel = '递延增值税 (PVA)'
-            console.log(`📋 PVA 递延: ${pvaReason || '未指定'}, 参考号: ${pvaReference || '无'}`)
+            console.log(`📋 PVA 递延: ${pvaReason || '未指�?}, 参考号: ${pvaReference || '�?}`)
         }
 
         if (taxType === 'import') {
@@ -1319,8 +1319,8 @@ app.post('/api/v1/tax/validate', async (c) => {
 
         const additionalInfo = {}
         if (taxType === 'pva') {
-            additionalInfo.pvaReason = pvaReason || '未指定'
-            additionalInfo.pvaReference = pvaReference || '无'
+            additionalInfo.pvaReason = pvaReason || '未指�?
+            additionalInfo.pvaReference = pvaReference || '�?
             additionalInfo.taxType = 'pva'
             additionalInfo.deferredVAT = vatAmount
         }
@@ -1339,7 +1339,7 @@ app.post('/api/v1/tax/validate', async (c) => {
             if (tenant && tenant.email) {
                 const resendApiKey = c.env.RESEND_API_KEY;
                 if (resendApiKey) {
-                    const statusText = valid ? '✅ 通过' : '⚠️ 需复核';
+                    const statusText = valid ? '�?通过' : '⚠️ 需复核';
                     
                     await fetch('https://api.resend.com/emails', {
                         method: 'POST',
@@ -1348,7 +1348,7 @@ app.post('/api/v1/tax/validate', async (c) => {
                             'Authorization': `Bearer ${resendApiKey}`
                         },
                         body: JSON.stringify({
-                            from: c.env.FROM_EMAIL || 'noreply@vatflow.com',
+                            from: c.env.FROM_EMAIL || 'noreply@mail.vatapex.com',
                             to: [tenant.email],
                             template: {
                                 id: '7239cbb6-8965-4883-82f7-b9685fd3b558',  // Tax Validation Notification 模板ID
@@ -1367,8 +1367,8 @@ app.post('/api/v1/tax/validate', async (c) => {
                 }
             }
         } catch (emailError) {
-            // 邮件发送失败不影响主流程
-            console.error('❌ 发送税务校验通知邮件失败:', emailError);
+            // 邮件发送失败不影响主流�?
+            console.error('�?发送税务校验通知邮件失败:', emailError);
         }
 
         return c.json({
@@ -1391,18 +1391,18 @@ app.post('/api/v1/tax/validate', async (c) => {
             }
         })
     } catch (error) {
-        console.error('❌ 税务校验错误:', error)
+        console.error('�?税务校验错误:', error)
         return c.json({ success: false, error: error.message || '税务校验失败' }, 500)
     }
 })
 
 // =============================================
-// ===== 税务平台列表（完整版） =====
+// ===== 税务平台列表（完整版�?=====
 // =============================================
 app.get('/api/v1/tax/platforms', async (c) => {
     try {
         const platforms = [
-            // 电商平台（20个）
+            // 电商平台�?0个）
             { id: 'amazon', name: 'Amazon', icon: 'amazon' },
             { id: 'ebay', name: 'eBay', icon: 'ebay' },
             { id: 'aliexpress', name: 'AliExpress', icon: 'aliexpress' },
@@ -1431,7 +1431,7 @@ app.get('/api/v1/tax/platforms', async (c) => {
 })
 
 // =============================================
-// ===== 电商平台与支持的国家列表（完整版） =====
+// ===== 电商平台与支持的国家列表（完整版�?=====
 // =============================================
 app.get('/api/v1/tax/ecommerce-platforms', async (c) => {
     try {
@@ -1490,7 +1490,7 @@ const PLATFORM_CONFIG = {
 };
 
 // =============================================
-// ===== 国家映射表 =====
+// ===== 国家映射�?=====
 // =============================================
 const COUNTRY_MAP = {
     'UK': 'GB', 'UNITED KINGDOM': 'GB', 'GB': 'GB',
@@ -1660,7 +1660,7 @@ app.post('/api/v1/files/upload', async (c) => {
 
         return c.json({
             success: true,
-            message: `上传成功，解析 ${transactions.length} 条记录，保存 ${created} 条`,
+            message: `上传成功，解�?${transactions.length} 条记录，保存 ${created} 条`,
             data: {
                 processed: transactions.length,
                 saved: created,
@@ -1669,7 +1669,7 @@ app.post('/api/v1/files/upload', async (c) => {
             }
         });
     } catch (error) {
-        console.error('❌ 文件上传错误:', error);
+        console.error('�?文件上传错误:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -1723,11 +1723,11 @@ app.delete('/api/v1/files/:id', async (c) => {
         ).bind(id).first();
         
         if (!file) {
-            return c.json({ error: '文件不存在' }, 404);
+            return c.json({ error: '文件不存�? }, 404);
         }
         
         if (file.tenant_id !== tenantId) {
-            return c.json({ error: '无权删除此文件' }, 403);
+            return c.json({ error: '无权删除此文�? }, 403);
         }
         
         await c.env.DB.prepare('DELETE FROM transactions WHERE tenant_id = ? AND id = ?').bind(tenantId, id).run();
@@ -1738,17 +1738,17 @@ app.delete('/api/v1/files/:id', async (c) => {
 });
 
 // =============================================
-// ===== 推送订阅接口 =====
+// ===== 推送订阅接�?=====
 // =============================================
 
-// 保存推送订阅
+// 保存推送订�?
 app.post('/api/v1/push/subscribe', async (c) => {
     try {
         const tenantId = getTenantId(c);
         const subscription = await c.req.json();
 
         if (!subscription || !subscription.endpoint) {
-            return c.json({ error: '无效的订阅信息' }, 400);
+            return c.json({ error: '无效的订阅信�? }, 400);
         }
 
         await c.env.DB.prepare(
@@ -1767,7 +1767,7 @@ app.post('/api/v1/push/subscribe', async (c) => {
             message: '订阅成功'
         });
     } catch (error) {
-        console.error('❌ 订阅保存失败:', error);
+        console.error('�?订阅保存失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -1791,12 +1791,12 @@ app.post('/api/v1/push/unsubscribe', async (c) => {
             message: '取消订阅成功'
         });
     } catch (error) {
-        console.error('❌ 取消订阅失败:', error);
+        console.error('�?取消订阅失败:', error);
         return c.json({ error: error.message }, 500);
     }
 });
 
-// 发送测试推送
+// 发送测试推�?
 app.post('/api/v1/push/test', async (c) => {
     try {
         const tenantId = getTenantId(c);
@@ -1817,7 +1817,7 @@ app.post('/api/v1/push/test', async (c) => {
         if (!vapidPrivateKey) {
             return c.json({
                 success: false,
-                message: 'VAPID_PRIVATE_KEY 未配置'
+                message: 'VAPID_PRIVATE_KEY 未配�?
             }, 500);
         }
 
@@ -1836,8 +1836,8 @@ app.post('/api/v1/push/test', async (c) => {
                     subscription: subscription,
                     message: {
                         payload: {
-                            title: '🧪 测试推送',
-                            body: `这是来自 VATFlow 的测试推送通知！时间: ${new Date().toLocaleString()}`,
+                            title: '🧪 测试推�?,
+                            body: `这是来自 VATFlow 的测试推送通知！时�? ${new Date().toLocaleString()}`,
                             icon: '/favicon.ico',
                             url: '/dashboard'
                         },
@@ -1866,18 +1866,18 @@ app.post('/api/v1/push/test', async (c) => {
                     }
                 }
             } catch (err) {
-                console.error('❌ 推送发送失败:', err);
+                console.error('�?推送发送失�?', err);
                 failed++;
             }
         }
 
         return c.json({
             success: true,
-            message: '推送测试完成',
+            message: '推送测试完�?,
             data: { sent, failed, total: results.length }
         });
     } catch (error) {
-        console.error('❌ 测试推送失败:', error);
+        console.error('�?测试推送失�?', error);
         return c.json({ error: error.message }, 500);
     }
 });
@@ -1915,7 +1915,7 @@ app.get('/api/v1/tenants/:id/vat-expiry', async (c) => {
     }
 });
 
-// 设置 VAT 到期日期（仅管理员 - 首次设置）
+// 设置 VAT 到期日期（仅管理�?- 首次设置�?
 app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
     try {
         const tenantId = c.req.param('id');
@@ -1928,7 +1928,7 @@ app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
         const { vatExpiryDate } = await c.req.json();
         
         if (!vatExpiryDate) {
-            return c.json({ error: '请输入到期日期' }, 400);
+            return c.json({ error: '请输入到期日�? }, 400);
         }
         
         await c.env.DB.prepare(
@@ -1945,7 +1945,7 @@ app.put('/api/v1/tenants/:id/vat-expiry/set', async (c) => {
     }
 });
 
-// 续期（仅管理员，记录合同/转账信息）
+// 续期（仅管理员，记录合同/转账信息�?
 app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
     try {
         const tenantId = c.req.param('id');
@@ -1996,7 +1996,7 @@ app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
         
         return c.json({
             success: true,
-            message: `✅ VAT已续期 ${extendYears} 年`,
+            message: `�?VAT已续�?${extendYears} 年`,
             data: {
                 oldExpiryDate: current?.vat_expiry_date || null,
                 newExpiryDate: newExpiryDate,
@@ -2011,31 +2011,31 @@ app.put('/api/v1/tenants/:id/vat-extend', async (c) => {
     }
 });
 // =============================================
-// ===== 发送 VAT 到期提醒邮件（使用 Resend 模板） =====
+// ===== 发�?VAT 到期提醒邮件（使�?Resend 模板�?=====
 // =============================================
 async function sendVatExpiryEmail(env, tenant, daysRemaining) {
     try {
         const resendApiKey = env.RESEND_API_KEY;
         if (!resendApiKey) {
-            console.log('⚠️ RESEND_API_KEY 未配置');
+            console.log('⚠️ RESEND_API_KEY 未配�?);
             return;
         }
 
-        // 判断紧急程度
+        // 判断紧急程�?
         let urgency = '';
         if (daysRemaining <= 1) {
-            urgency = '🔴 紧急';
+            urgency = '🔴 紧�?;
         } else if (daysRemaining <= 7) {
             urgency = '🟠 即将到期';
         } else if (daysRemaining <= 30) {
-            urgency = '🟡 需要注意';
+            urgency = '🟡 需要注�?;
         } else {
-            urgency = '🟢 准备中';
+            urgency = '🟢 准备�?;
         }
 
-        const fromEmail = env.FROM_EMAIL || 'noreply@vatflow.com';
+        const fromEmail = env.FROM_EMAIL || 'noreply@mail.vatapex.com';
         
-        // ===== 使用 Resend 模板发送 =====
+        // ===== 使用 Resend 模板发�?=====
         const response = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
@@ -2052,7 +2052,7 @@ async function sendVatExpiryEmail(env, tenant, daysRemaining) {
                         companyName: tenant.company || '-',
                         daysRemaining: daysRemaining,
                         urgency: urgency,
-                        expiryDate: tenant.vat_expiry_date || '未设置',
+                        expiryDate: tenant.vat_expiry_date || '未设�?,
                         link: 'https://vatflow.vatapex.com/tenants'
                     }
                 }
@@ -2061,12 +2061,12 @@ async function sendVatExpiryEmail(env, tenant, daysRemaining) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('❌ 邮件发送失败:', errorText);
+            console.error('�?邮件发送失�?', errorText);
         } else {
             console.log(`📧 VAT到期提醒已发送到: ${tenant.email} (${daysRemaining}天后到期)`);
         }
     } catch (error) {
-        console.error('❌ 发送VAT到期提醒邮件失败:', error);
+        console.error('�?发送VAT到期提醒邮件失败:', error);
     }
 }
 // =============================================
@@ -2118,13 +2118,13 @@ async function checkVatExpiry(env) {
                     'UPDATE tenants SET last_vat_reminder_sent = ? WHERE tenant_id = ?'
                 ).bind(newLastReminder, tenant.tenant_id).run();
                 
-                console.log(`✅ 已发送提醒给 ${tenant.name} (${daysRemaining}天后到期)`);
+                console.log(`�?已发送提醒给 ${tenant.name} (${daysRemaining}天后到期)`);
             }
         }
 
-        console.log('✅ VAT到期检查完成');
+        console.log('�?VAT到期检查完�?);
     } catch (error) {
-        console.error('❌ VAT到期检查失败:', error);
+        console.error('�?VAT到期检查失�?', error);
     }
 }
 
@@ -2132,7 +2132,7 @@ async function checkVatExpiry(env) {
 // ===== 404 =====
 // =============================================
 app.notFound((c) => {
-    return c.json({ error: '接口不存在' }, 404)
+    return c.json({ error: '接口不存�? }, 404)
 })
 
 // =============================================
@@ -2140,7 +2140,7 @@ app.notFound((c) => {
 // =============================================
 app.onError((err, c) => {
     console.error('Error:', err)
-    return c.json({ error: err.message || '服务器错误' }, 500)
+    return c.json({ error: err.message || '服务器错�? }, 500)
 })
 
 // =============================================
