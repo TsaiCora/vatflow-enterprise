@@ -876,5 +876,248 @@ function Upload() {
         </Box>
     );
 }
+// =============================================
+// ===== 进口文件类型配置 =====
+// =============================================
+const IMPORT_FILE_TYPES = [
+    // 欧洲
+    { id: 'c79', country: 'GB', name: '英国', label: 'C79 进口增值税证书', icon: '📄' },
+    { id: 'c88', country: 'GB', name: '英国', label: 'C88 海关清关单', icon: '📋' },
+    { id: 'de_import', country: 'DE', name: '德国', label: 'Einkommensteuerbescheid', icon: '📄' },
+    { id: 'fr_import', country: 'FR', name: '法国', label: 'Attestation de TVA', icon: '📄' },
+    { id: 'it_import', country: 'IT', name: '意大利', label: 'Certificato IVA', icon: '📄' },
+    { id: 'es_import', country: 'ES', name: '西班牙', label: 'Certificado de IVA', icon: '📄' },
+    { id: 'nl_import', country: 'NL', name: '荷兰', label: 'BTW aangifte', icon: '📄' },
+    { id: 'be_import', country: 'BE', name: '比利时', label: 'Certificat TVA', icon: '📄' },
+    { id: 'pl_import', country: 'PL', name: '波兰', label: 'Deklaracja VAT', icon: '📄' },
+    { id: 'se_import', country: 'SE', name: '瑞典', label: 'Momsbesked', icon: '📄' },
+    { id: 'dk_import', country: 'DK', name: '丹麦', label: 'Momsangivelse', icon: '📄' },
+    { id: 'fi_import', country: 'FI', name: '芬兰', label: 'ALV-ilmoitus', icon: '📄' },
+    { id: 'ie_import', country: 'IE', name: '爱尔兰', label: 'VAT Return', icon: '📄' },
+    { id: 'pt_import', country: 'PT', name: '葡萄牙', label: 'Declaração de IVA', icon: '📄' },
+    { id: 'at_import', country: 'AT', name: '奥地利', label: 'UVA-Meldung', icon: '📄' },
+    { id: 'no_import', country: 'NO', name: '挪威', label: 'MVA-melding', icon: '📄' },
+    { id: 'ch_import', country: 'CH', name: '瑞士', label: 'MWST-Abrechnung', icon: '📄' },
+    { id: 'ru_import', country: 'RU', name: '俄罗斯', label: 'НДС-декларация', icon: '📄' },
+    // 亚洲
+    { id: 'jp_import', country: 'JP', name: '日本', label: '消費税申告書', icon: '📄' },
+    { id: 'kr_import', country: 'KR', name: '韩国', label: '부가가치세 신고서', icon: '📄' },
+    { id: 'cn_import', country: 'CN', name: '中国', label: '增值税申报表', icon: '📄' },
+    { id: 'sg_import', country: 'SG', name: '新加坡', label: 'GST Return', icon: '📄' },
+    { id: 'my_import', country: 'MY', name: '马来西亚', label: 'SST Return', icon: '📄' },
+    { id: 'th_import', country: 'TH', name: '泰国', label: 'ภาษีมูลค่าเพิ่ม', icon: '📄' },
+    { id: 'vn_import', country: 'VN', name: '越南', label: 'Tờ khai thuế GTGT', icon: '📄' },
+    { id: 'id_import', country: 'ID', name: '印度尼西亚', label: 'SPT PPN', icon: '📄' },
+    { id: 'ph_import', country: 'PH', name: '菲律宾', label: 'VAT Return', icon: '📄' },
+    { id: 'in_import', country: 'IN', name: '印度', label: 'GSTR-1', icon: '📄' },
+    // 美洲
+    { id: 'us_import', country: 'US', name: '美国', label: 'Sales Tax Return', icon: '📄' },
+    { id: 'ca_import', country: 'CA', name: '加拿大', label: 'GST/HST Return', icon: '📄' },
+    { id: 'mx_import', country: 'MX', name: '墨西哥', label: 'Declaración de IVA', icon: '📄' },
+    { id: 'br_import', country: 'BR', name: '巴西', label: 'Declaração de ICMS', icon: '📄' },
+    // 大洋洲
+    { id: 'au_import', country: 'AU', name: '澳大利亚', label: 'BAS', icon: '📄' },
+    { id: 'nz_import', country: 'NZ', name: '新西兰', label: 'GST Return', icon: '📄' },
+    // 非洲
+    { id: 'za_import', country: 'ZA', name: '南非', label: 'VAT Return', icon: '📄' },
+    // 中东
+    { id: 'ae_import', country: 'AE', name: '阿联酋', label: 'VAT Return', icon: '📄' },
+    { id: 'tr_import', country: 'TR', name: '土耳其', label: 'KDV Beyannamesi', icon: '📄' },
+];
 
+// =============================================
+// ===== 获取国家进口文件信息 =====
+// =============================================
+const getCountryImportInfo = (countryCode) => {
+    const info = {
+        GB: { vatProof: 'C79', customsDoc: 'C88 / CDS', authority: 'HMRC', period: '月度' },
+        DE: { vatProof: 'Einkommensteuerbescheid', customsDoc: 'Zollanmeldung', authority: 'Bundeszentralamt für Steuern', period: '季度/月度' },
+        FR: { vatProof: 'Attestation de TVA', customsDoc: 'Déclaration en douane', authority: 'Direction Générale des Douanes', period: '月度' },
+        IT: { vatProof: 'Certificato IVA', customsDoc: 'Dichiarazione doganale', authority: 'Agenzia delle Dogane', period: '月度' },
+        ES: { vatProof: 'Certificado de IVA', customsDoc: 'Documento de despacho', authority: 'Agencia Tributaria', period: '月度' },
+        NL: { vatProof: 'BTW aangifte', customsDoc: 'Invoeraangifte', authority: 'Belastingdienst', period: '月度' },
+        BE: { vatProof: 'Certificat TVA', customsDoc: 'Document douanier', authority: 'Service Public Fédéral Finances', period: '月度' },
+        PL: { vatProof: 'Deklaracja VAT', customsDoc: 'Dokument celny', authority: 'Krajowa Administracja Skarbowa', period: '月度' },
+        SE: { vatProof: 'Momsbesked', customsDoc: 'Tulldeklaration', authority: 'Skatteverket', period: '月度' },
+        DK: { vatProof: 'Momsangivelse', customsDoc: 'Tolddeklaration', authority: 'Skattestyrelsen', period: '月度' },
+        FI: { vatProof: 'ALV-ilmoitus', customsDoc: 'Tulli-ilmoitus', authority: 'Verohallinto', period: '月度' },
+        IE: { vatProof: 'VAT Return', customsDoc: 'Customs Declaration', authority: 'Revenue Commissioners', period: '月度' },
+        PT: { vatProof: 'Declaração de IVA', customsDoc: 'Declaração aduaneira', authority: 'Autoridade Tributária', period: '月度' },
+        AT: { vatProof: 'UVA-Meldung', customsDoc: 'Zollanmeldung', authority: 'Finanzamt', period: '月度' },
+        NO: { vatProof: 'MVA-melding', customsDoc: 'Tolldeklarasjon', authority: 'Skatteetaten', period: '月度' },
+        CH: { vatProof: 'MWST-Abrechnung', customsDoc: 'Zollanmeldung', authority: 'Eidgenössische Steuerverwaltung', period: '季度' },
+        RU: { vatProof: 'НДС-декларация', customsDoc: 'Таможенная декларация', authority: 'ФНС России', period: '季度' },
+        JP: { vatProof: '消費税申告書', customsDoc: '輸入許可書', authority: '国税庁', period: '月度' },
+        KR: { vatProof: '부가가치세 신고서', customsDoc: '수입신고서', authority: '국세청', period: '月度' },
+        CN: { vatProof: '增值税申报表', customsDoc: '进口报关单', authority: '国家税务总局', period: '月度' },
+        SG: { vatProof: 'GST Return', customsDoc: 'Import Declaration', authority: 'IRAS', period: '月度' },
+        MY: { vatProof: 'SST Return', customsDoc: 'Import Declaration', authority: 'Royal Malaysian Customs', period: '月度' },
+        TH: { vatProof: 'ภาษีมูลค่าเพิ่ม', customsDoc: 'ใบขนสินค้าขาเข้า', authority: 'กรมสรรพากร', period: '月度' },
+        VN: { vatProof: 'Tờ khai thuế GTGT', customsDoc: 'Tờ khai hải quan', authority: 'Tổng cục Thuế', period: '月度' },
+        ID: { vatProof: 'SPT PPN', customsDoc: 'Pemberitahuan Impor', authority: 'Direktorat Jenderal Pajak', period: '月度' },
+        PH: { vatProof: 'VAT Return', customsDoc: 'Import Declaration', authority: 'Bureau of Internal Revenue', period: '月度' },
+        IN: { vatProof: 'GSTR-1', customsDoc: 'Bill of Entry', authority: 'Central Board of Indirect Taxes', period: '月度' },
+        US: { vatProof: 'Sales Tax Return', customsDoc: 'Customs Entry', authority: 'IRS / CBP', period: '月度' },
+        CA: { vatProof: 'GST/HST Return', customsDoc: 'Customs Invoice', authority: 'CRA', period: '月度' },
+        MX: { vatProof: 'Declaración de IVA', customsDoc: 'Pedimento de importación', authority: 'SAT', period: '月度' },
+        BR: { vatProof: 'Declaração de ICMS', customsDoc: 'DI - Declaração de Importação', authority: 'Receita Federal', period: '月度' },
+        AU: { vatProof: 'BAS', customsDoc: 'Import Declaration', authority: 'Australian Tax Office', period: '月度' },
+        NZ: { vatProof: 'GST Return', customsDoc: 'Import Declaration', authority: 'Inland Revenue', period: '月度' },
+        ZA: { vatProof: 'VAT Return', customsDoc: 'Customs Declaration', authority: 'SARS', period: '月度' },
+        AE: { vatProof: 'VAT Return', customsDoc: 'Customs Declaration', authority: 'FTA', period: '月度' },
+        TR: { vatProof: 'KDV Beyannamesi', customsDoc: 'Gümrük Beyannamesi', authority: 'Gelir İdaresi Başkanlığı', period: '月度' },
+    };
+    return info[countryCode.toUpperCase()] || null;
+};
+
+// =============================================
+// ===== 在 Upload 组件中添加进口文件上传 Tab =====
+// =============================================
+
+// 在组件中添加以下状态
+const [fileType, setFileType] = useState('sales'); // 'sales' | 'import'
+const [selectedImportType, setSelectedImportType] = useState('');
+const [importFileInfo, setImportFileInfo] = useState(null);
+
+// 选择进口文件类型时更新信息
+const handleImportTypeChange = (typeId) => {
+    setSelectedImportType(typeId);
+    const fileType = IMPORT_FILE_TYPES.find(t => t.id === typeId);
+    if (fileType) {
+        const info = getCountryImportInfo(fileType.country);
+        setImportFileInfo({ ...fileType, ...info });
+    }
+};
+
+// 在 Upload 组件的 Tabs 中添加
+<Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+    <Tab label="📤 上传销售数据" icon={<CloudUploadIcon />} />
+    <Tab label="📄 进口清关文件" icon={<AssessmentIcon />} />
+    <Tab label="📊 季度核对" icon={<AssessmentIcon />} />
+</Tabs>
+
+// Tab 2: 进口清关文件上传
+{activeTab === 1 && (
+    <Box>
+        <Typography variant="subtitle1" gutterBottom>上传进口VAT证明文件</Typography>
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+            支持各国进口VAT证明文件（C79、Einkommensteuerbescheid等）
+        </Typography>
+
+        <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                    <InputLabel>客户</InputLabel>
+                    <Select
+                        value={selectedTenant}
+                        onChange={(e) => setSelectedTenant(e.target.value)}
+                        label="客户"
+                    >
+                        <MenuItem value="">请选择客户</MenuItem>
+                        {tenants.map((t) => (
+                            <MenuItem key={t.id || t.tenant_id} value={t.id || t.tenant_id}>
+                                {t.name || t.company || t.email}
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                    <InputLabel>文件类型</InputLabel>
+                    <Select
+                        value={selectedImportType}
+                        onChange={(e) => handleImportTypeChange(e.target.value)}
+                        label="文件类型"
+                    >
+                        <MenuItem value="">请选择文件类型</MenuItem>
+                        {IMPORT_FILE_TYPES.map((t) => (
+                            <MenuItem key={t.id} value={t.id}>
+                                {t.icon} {t.country} - {t.label}
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            </Grid>
+
+            {importFileInfo && (
+                <>
+                    <Grid item xs={12}>
+                        <Alert severity="info" sx={{ mb: 1 }}>
+                            <Typography variant="body2">
+                                <strong>{importFileInfo.countryName}</strong> - {importFileInfo.vatProof}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                签发机构: {importFileInfo.authority} | 申报周期: {importFileInfo.period}
+                            </Typography>
+                        </Alert>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                        <FormControl fullWidth size="small">
+                            <InputLabel>年份</InputLabel>
+                            <Select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(e.target.value)}
+                                label="年份"
+                            >
+                                {YEARS.map((y) => (
+                                    <MenuItem key={y} value={y}>{y}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                        <FormControl fullWidth size="small">
+                            <InputLabel>月份</InputLabel>
+                            <Select
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                label="月份"
+                            >
+                                <MenuItem value="">请选择月份</MenuItem>
+                                {MONTHS.map((m) => (
+                                    <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                        <FormControl fullWidth size="small">
+                            <InputLabel>期间</InputLabel>
+                            <Select
+                                value={selectedQuarter}
+                                onChange={(e) => setSelectedQuarter(e.target.value)}
+                                label="期间"
+                            >
+                                <MenuItem value="">请选择期间</MenuItem>
+                                {QUARTERS.map((q) => (
+                                    <MenuItem key={q.value} value={q.value}>{q.label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Button
+                            variant="contained"
+                            component="label"
+                            fullWidth
+                            startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                            disabled={uploading || !selectedTenant || !selectedImportType || !selectedYear || !selectedMonth}
+                            sx={{ py: 2 }}
+                        >
+                            {uploading ? `上传中 ${uploadProgress}%` : `上传 ${importFileInfo.countryName} 进口文件`}
+                            <input
+                                type="file"
+                                hidden
+                                multiple
+                                onChange={(e) => handleImportFileUpload(e)}
+                                accept=".pdf,.xml,.csv,.xlsx,.xls"
+                            />
+                        </Button>
+                    </Grid>
+                </>
+            )}
+        </Grid>
+    </Box>
+)}
 export default Upload;
